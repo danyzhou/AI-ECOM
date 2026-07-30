@@ -6,9 +6,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# 设置环境变量降低 Node.js 内存占用上限，防止构建卡死
+ENV NODE_OPTIONS="--max-old-space-size=1536"
+
 # Copy package descriptors and install all dependencies
 COPY package*.json ./
-RUN npm install
+# 禁用 fund 和 audit 提示，减少内存和 CPU 消耗
+RUN npm install --no-audit --no-fund
 
 # Copy full application source code
 COPY . .
@@ -23,10 +27,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # Copy compiled dist bundle from builder stage
 COPY --from=builder /app/dist ./dist
