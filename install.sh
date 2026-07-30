@@ -14,10 +14,10 @@ echo -e "${BLUE}================================================${NC}"
 echo -e "${GREEN}       AI-ECOM 一键自动化部署脚本 (完整修复版)       ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
-# 1. 检查并安装基础环境依赖
+# 1. 检查并安装基础环境依赖 (util-linux 包含了 fallocate 工具)
 echo -e "\n${YELLOW}[1/7] 检查并自动化安装基础环境依赖...${NC}"
 apt-get update -y
-apt-get install -y curl git nginx ufw fallocate
+apt-get install -y curl git nginx ufw util-linux
 
 # 检查/启动 Docker
 if ! command -v docker &> /dev/null; then
@@ -29,11 +29,11 @@ systemctl enable --now docker
 # 2. 自动开启 Swap 虚拟内存 (防止 1G/2G 内存 VPS 在 npm build 时被 Killed)
 echo -e "\n${YELLOW}[2/7] 检查并配置 Swap 虚拟内存...${NC}"
 SWAP_SIZE=$(free -m | awk '/Swap:/ {print $2}')
-if [ "$SWAP_SIZE" -lt 1000 ]; then
+if [ -z "$SWAP_SIZE" ] || [ "$SWAP_SIZE" -lt 1000 ]; then
     echo -e "${YELLOW}检测到 Swap 内存小于 1GB，正在自动创建 2GB Swap 交换分区...${NC}"
     swapoff -a 2>/dev/null || true
     rm -f /swapfile 2>/dev/null || true
-    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+    fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
