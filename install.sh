@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-# AI Ecommerce Operation Center - One-Click Production Installer
-# Stack: React 19 + Vite + Express + Node.js + PostgreSQL
+# =================================================================
+# AI Ecommerce Operation Center - 全自动生产部署安装器
+# Stack: React 19 + Vite + Express + Node.js + PostgreSQL + Nginx
+# =================================================================
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -11,74 +13,165 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}====================================================${NC}"
-echo -e "${BLUE}    AI Ecommerce Operation Center 生产部署安装器      ${NC}"
+echo -e "${BLUE}    AI Ecommerce Operation Center 生产一键部署器     ${NC}"
 echo -e "${BLUE}====================================================${NC}"
 
-# 1. Check prerequisites
-echo -e "\n${YELLOW}[1/6] 检查系统环境依赖...${NC}"
-
-if command -v docker >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
-    HAS_DOCKER=true
-    echo -e "${GREEN}✓ Docker & Docker Compose 已就绪${NC}"
-else
-    HAS_DOCKER=false
-    echo -e "${YELLOW}! 未检测到 Docker Compose，将使用本地 Node.js 运行模式${NC}"
+# 1. 检查 ROOT 权限
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${RED}错误：请使用 root 权限运行此脚本！(例如: sudo bash install.sh)${NC}"
+  exit 1
 fi
 
-if ! command -v node >/dev/null 2>&1 && [ "$HAS_DOCKER" = false ]; then
-    echo -e "${RED}✗ 错误: 既未安装 Docker 也未安装 Node.js (v18+)，无法继续。${NC}"
-    exit 1
+# 2. 交互收集配置信息
+echo -e "\n${YELLOW}[1/6] 请输入系统部署配置参数...${NC}"
+
+read -p "请输入要绑定的自定义域名 (例如: ecom.yourdomain.com): " DOMAIN_NAME
+while [ -z "$DOMAIN_NAME" ]; do
+    read -p "域名不能为空，请重新输入: " DOMAIN_NAME
+done
+
+read -p "请输入 PostgreSQL 数据库名称 [默认: ecom_op_center]: " DB_NAME
+DB_NAME=${DB_NAME:-ecom_op_center}
+
+read -p "请输入 PostgreSQL 数据库用户名 [默认: ecom_user]: " DB_USER
+DB_USER=${DB_USER:-ecom_user}
+
+read -s -p "请设置 PostgreSQL 数据库密码: " DB_PASS
+echo ""
+while [ -z "$DB_PASS" ]; do
+    read -s -p "数据库密码不能为空，请重新输入: " DB_PASS
+    echo ""
+done
+
+read -p "请输入系统管理员用户名 [默认: admin]: " ADMIN_USER
+ADMIN_USER=${ADMIN_USER:-admin}
+
+read -s -p "请设置系统管理员密码: " ADMIN_PASS
+echo ""
+while [ -z "$ADMIN_PASS" ]; do
+    read -s -p "管理员密码不能为空，请重新输入: " ADMIN_PASS
+    echo ""
+done
+
+# 3. 检查并自动化安装软件依赖 (Docker, Docker Compose, Nginx)
+echo -e "\n${YELLOW}[2/6] 检查并自动化安装基础环境依赖...${NC}"
+
+apt-get update -y && apt-get install -y curl git ufw nginx
+
+if ! command -v docker &> /dev/null; then
+    echo "未检测到 Docker，正在自动安装 Docker..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl start docker
+    systemctl enable docker
 fi
 
-# 2. Setup environment configuration
-echo -e "\n${YELLOW}[2/6] 初始化生产环境变量配置...${NC}"
-if [ ! -f .env ]; then
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        echo -e "${GREEN}✓ 已从 .env.example 生成 .env 配置文件${NC}"
-    else
-        cat << 'EOF' > .env
-PORT=3000
-NODE_ENV=production
-DATABASE_URL=postgres://ecom_user:ecom_secure_pass_2026@localhost:5432/ecom_op_center
-JWT_SECRET=production_super_secret_jwt_key_2026_ecom_center
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-EOF
-        echo -e "${GREEN}✓ 已全新创建默认 .env 配置文件${NC}"
-    fi
-else
-    echo -e "${GREEN}✓ 检测到已存在 .env 配置文件${NC}"
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    echo "正在安装 Docker Compose..."
+    apt-get install -y docker-compose-plugin || curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
 fi
 
-# 3. Create required runtime directories
-echo -e "\n${YELLOW}[3/6] 创建运行日志与备份目录...${NC}"
+# 4. 生成动态 .env 环境变量
+echo -e "\n${YELLOW}[3/6] 写入用户定制化的环境变量配置 (.env)...${NC}"
 mkdir -p logs backups data
 
-# 4. Build application or start containers
-if [ "$HAS_DOCKER" = true ]; then
-    echo -e "\n${YELLOW}[4/6] 启动 Docker 容器与 PostgreSQL 数据库...${NC}"
-    docker-compose down 2>/dev/null || true
-    docker-compose up -d --build
-    echo -e "${GREEN}✓ Docker 容器已服务化运行${NC}"
-else
-    echo -e "\n${YELLOW}[4/6] 编译打包项目 (npm install & build)...${NC}"
-    npm install --production=false
-    npm run build
-    echo -e "${GREEN}✓ Vite前端与Express服务端编译完成${NC}"
-fi
+# 生成强随机 JWT Secret
+JWT_SECRET=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
 
-# 5. Database health check & seeding
-echo -e "\n${YELLOW}[5/6] 数据库连通性校验与初始管理员创建...${NC}"
-sleep 3
-if [ -f healthcheck.sh ]; then
-    bash healthcheck.sh || true
-fi
+cat << EOF > .env
+PORT=3000
+NODE_ENV=production
+APP_DOMAIN=${DOMAIN_NAME}
 
+# 数据库连接参数 (基于 Docker 服务名 postgres)
+POSTGRES_DB=${DB_NAME}
+POSTGRES_USER=${DB_USER}
+POSTGRES_PASSWORD=${DB_PASS}
+DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME}
+
+# 系统安全与初始凭证
+JWT_SECRET=${JWT_SECRET}
+ADMIN_INIT_USER=${ADMIN_USER}
+ADMIN_INIT_PASS=${ADMIN_PASS}
+
+# 语言限制
+TARGET_LANGUAGE=es
+EOF
+
+echo -e "${GREEN}✓ .env 环境变量配置完成${NC}"
+
+# 5. 自动构建 docker-compose.yml 容器服务
+echo -e "\n${YELLOW}[4/6] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
+
+cat << 'EOF' > docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+EOF
+
+docker compose up -d --build || docker-compose up -d --build
+
+# 6. 配置 Nginx 域名反向代理
+echo -e "\n${YELLOW}[5/6] 正在配置 Nginx 域名绑定与反向代理...${NC}"
+
+cat << EOF > /etc/nginx/sites-available/ecom-center.conf
+server {
+    listen 80;
+    server_name ${DOMAIN_NAME};
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/ecom-center.conf /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+
+# 7. 完成安装提示
 echo -e "\n${BLUE}====================================================${NC}"
-echo -e "${GREEN}  🎉 AI Ecommerce Operation Center 安装成功！         ${NC}"
+echo -e "${GREEN}  🎉 AI Ecommerce Operation Center 部署完成！        ${NC}"
 echo -e "${BLUE}====================================================${NC}"
-echo -e "访问地址: ${YELLOW}http://localhost:3000${NC}"
-echo -e "默认初始管理员账号: ${YELLOW}admin${NC}"
-echo -e "默认初始管理员密码: ${YELLOW}admin123${NC}"
-echo -e "${RED}注意: 请务必登录系统后在后台修改默认密码并配置 API Key！${NC}\n"
+echo -e "访问域名: ${YELLOW}http://${DOMAIN_NAME}${NC}"
+echo -e "管理员账号: ${YELLOW}${ADMIN_USER}${NC}"
+echo -e "管理员密码: ${YELLOW}****** (你设置的密码)${NC}"
+echo -e "数据库名称: ${YELLOW}${DB_NAME}${NC}"
+echo -e "数据库用户: ${YELLOW}${DB_USER}${NC}"
+echo -e "${BLUE}====================================================${NC}\n"
