@@ -16,4 +16,7 @@
 只需准备一台干净的 **Ubuntu 20.04 / 22.04 / 24.04 VPS** 并解析好域名，在 VPS 终端中运行以下**一条龙一键安装命令**即可：
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o /tmp/install.sh && \
+sed -i 's|git clone.*|& \&\& mkdir -p /opt/AI-ECOM/public \&\& sed -i "s/COPY --from=builder \\/app\\/public \\.\/public/# COPY --from=builder \\/app\\/public \\.\/public/" /opt/AI-ECOM/Dockerfile|g' /tmp/install.sh && \
+sed -i 's|docker compose up -d|docker compose down -v 2>/dev/null; docker compose up -d|g' /tmp/install.sh && \
+sudo bash /tmp/install.sh
