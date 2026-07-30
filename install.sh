@@ -3,7 +3,8 @@ set -e
 
 # =================================================================
 # AI Ecommerce Operation Center - 全自动生产部署安装器
-# Stack: React 19 + Vite + Express + Node.js + PostgreSQL + Nginx
+# Stack: React 19 + Express + PostgreSQL + Nginx + Docker
+# Repo: https://github.com/danyzhou/AI-ECOM
 # =================================================================
 
 RED='\033[0;31m'
@@ -53,7 +54,7 @@ while [ -z "$ADMIN_PASS" ]; do
     echo ""
 done
 
-# 3. 检查并自动化安装软件依赖 (Docker, Docker Compose, Nginx)
+# 3. 检查并自动化安装基础环境依赖
 echo -e "\n${YELLOW}[2/6] 检查并自动化安装基础环境依赖...${NC}"
 
 apt-get update -y && apt-get install -y curl git ufw nginx
@@ -65,16 +66,27 @@ if ! command -v docker &> /dev/null; then
     systemctl enable docker
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo "正在安装 Docker Compose..."
-    apt-get install -y docker-compose-plugin || curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose
+# 4. 自动拉取或定位源码目录
+echo -e "\n${YELLOW}[3/6] 准备项目源码环境...${NC}"
+
+INSTALL_DIR="/opt/AI-ECOM"
+
+if [ -f "./Dockerfile" ]; then
+    echo "已在项目源码目录中执行，跳过 Git Clone..."
+    INSTALL_DIR=$(pwd)
+else
+    echo "正在克隆项目仓库至 ${INSTALL_DIR} ..."
+    if [ -d "$INSTALL_DIR" ]; then
+        rm -rf "$INSTALL_DIR"
+    fi
+    git clone https://github.com/danyzhou/AI-ECOM.git "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
 fi
 
-# 4. 生成动态 .env 环境变量
-echo -e "\n${YELLOW}[3/6] 写入用户定制化的环境变量配置 (.env)...${NC}"
+# 5. 生成动态 .env 环境变量
+echo -e "\n${YELLOW}[4/6] 写入用户定制化的环境变量配置 (.env)...${NC}"
 mkdir -p logs backups data
 
-# 生成强随机 JWT Secret
 JWT_SECRET=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
 
 cat << EOF > .env
@@ -82,7 +94,7 @@ PORT=3000
 NODE_ENV=production
 APP_DOMAIN=${DOMAIN_NAME}
 
-# 数据库连接参数 (基于 Docker 服务名 postgres)
+# 数据库连接参数
 POSTGRES_DB=${DB_NAME}
 POSTGRES_USER=${DB_USER}
 POSTGRES_PASSWORD=${DB_PASS}
@@ -93,18 +105,16 @@ JWT_SECRET=${JWT_SECRET}
 ADMIN_INIT_USER=${ADMIN_USER}
 ADMIN_INIT_PASS=${ADMIN_PASS}
 
-# 语言限制
+# 语言限制 (西语)
 TARGET_LANGUAGE=es
 EOF
 
 echo -e "${GREEN}✓ .env 环境变量配置完成${NC}"
 
-# 5. 自动构建 docker-compose.yml 容器服务
-echo -e "\n${YELLOW}[4/6] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
+# 6. 自动构建并启动 Docker 容器
+echo -e "\n${YELLOW}[5/6] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
 
 cat << 'EOF' > docker-compose.yml
-version: '3.8'
-
 services:
   app:
     build: .
@@ -136,10 +146,10 @@ volumes:
   pgdata:
 EOF
 
-docker compose up -d --build || docker-compose up -d --build
+docker compose up -d --build
 
-# 6. 配置 Nginx 域名反向代理
-echo -e "\n${YELLOW}[5/6] 正在配置 Nginx 域名绑定与反向代理...${NC}"
+# 7. 配置 Nginx 域名反向代理
+echo -e "\n${YELLOW}[6/6] 正在配置 Nginx 域名绑定与反向代理...${NC}"
 
 cat << EOF > /etc/nginx/sites-available/ecom-center.conf
 server {
@@ -165,13 +175,12 @@ ln -sf /etc/nginx/sites-available/ecom-center.conf /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
-# 7. 完成安装提示
+# 完成提示
 echo -e "\n${BLUE}====================================================${NC}"
 echo -e "${GREEN}  🎉 AI Ecommerce Operation Center 部署完成！        ${NC}"
 echo -e "${BLUE}====================================================${NC}"
 echo -e "访问域名: ${YELLOW}http://${DOMAIN_NAME}${NC}"
 echo -e "管理员账号: ${YELLOW}${ADMIN_USER}${NC}"
 echo -e "管理员密码: ${YELLOW}****** (你设置的密码)${NC}"
-echo -e "数据库名称: ${YELLOW}${DB_NAME}${NC}"
-echo -e "数据库用户: ${YELLOW}${DB_USER}${NC}"
+echo -e "项目路径: ${YELLOW}${INSTALL_DIR}${NC}"
 echo -e "${BLUE}====================================================${NC}\n"
