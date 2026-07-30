@@ -11,13 +11,13 @@ NC='\033[0m'
 PROJECT_DIR="/opt/AI-ECOM"
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${GREEN}       AI-ECOM 一键自动化部署脚本 (完整修复版)       ${NC}"
+echo -e "${GREEN}    AI-ECOM 一键自动化部署与 SSL 证书配置脚本      ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
-# 1. 检查并安装基础环境依赖 (util-linux 包含了 fallocate 工具)
-echo -e "\n${YELLOW}[1/7] 检查并自动化安装基础环境依赖...${NC}"
+# 1. 检查并安装基础环境依赖 (包含 certbot 和 python3-certbot-nginx)
+echo -e "\n${YELLOW}[1/8] 检查并自动化安装基础环境依赖...${NC}"
 apt-get update -y
-apt-get install -y curl git nginx ufw util-linux
+apt-get install -y curl git nginx ufw util-linux certbot python3-certbot-nginx
 
 # 检查/启动 Docker
 if ! command -v docker &> /dev/null; then
@@ -27,7 +27,7 @@ fi
 systemctl enable --now docker
 
 # 2. 自动开启 Swap 虚拟内存 (防止 1G/2G 内存 VPS 在 npm build 时被 Killed)
-echo -e "\n${YELLOW}[2/7] 检查并配置 Swap 虚拟内存...${NC}"
+echo -e "\n${YELLOW}[2/8] 检查并配置 Swap 虚拟内存...${NC}"
 SWAP_SIZE=$(free -m | awk '/Swap:/ {print $2}')
 if [ -z "$SWAP_SIZE" ] || [ "$SWAP_SIZE" -lt 1000 ]; then
     echo -e "${YELLOW}检测到 Swap 内存小于 1GB，正在自动创建 2GB Swap 交换分区...${NC}"
@@ -46,7 +46,7 @@ else
 fi
 
 # 3. 准备项目源码环境与补全缺失文件
-echo -e "\n${YELLOW}[3/7] 准备项目源码环境...${NC}"
+echo -e "\n${YELLOW}[3/8] 准备项目源码环境...${NC}"
 if [ ! -d "$PROJECT_DIR" ]; then
     echo "正在克隆项目仓库至 $PROJECT_DIR ..."
     git clone https://github.com/danyzhou/AI-ECOM.git "$PROJECT_DIR"
@@ -63,10 +63,17 @@ if [ -f "Dockerfile" ]; then
     sed -i 's/COPY --from=builder \/app\/public \.\/public/# COPY --from=builder \/app\/public \.\/public/' Dockerfile
 fi
 
-# 4. 配置环境变量
-echo -e "\n${YELLOW}[4/7] 请输入系统部署配置参数...${NC}"
+# 4. 配置环境变量与域名参数
+echo -e "\n${YELLOW}[4/8] 请输入系统部署配置参数...${NC}"
 read -p "请输入要绑定的自定义域名 (例如: ecom.yourdomain.com): " DOMAIN_NAME
-DOMAIN_NAME=${DOMAIN_NAME:-"_"}
+while [ -z "$DOMAIN_NAME" ]; do
+    read -p "域名不能为空，请输入自定义域名: " DOMAIN_NAME
+done
+
+read -p "请输入用于接收 SSL 证书到期提醒的邮箱: " CERT_EMAIL
+while [ -z "$CERT_EMAIL" ]; do
+    read -p "邮箱不能为空，请输入常用邮箱: " CERT_EMAIL
+done
 
 read -p "请输入 PostgreSQL 数据库名称 [默认: ecom_op_center]: " DB_NAME
 DB_NAME=${DB_NAME:-"ecom_op_center"}
@@ -105,7 +112,7 @@ EOF
 echo -e "${GREEN}✓ .env 环境变量配置完成${NC}"
 
 # 5. 清理损坏数据卷并构建启动 Docker 容器
-echo -e "\n${YELLOW}[5/7] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
+echo -e "\n${YELLOW}[5/8] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
 docker compose down -v 2>/dev/null || true
 docker compose up -d --build
 
@@ -114,19 +121,19 @@ echo -e "${YELLOW}等待数据库健康就绪...${NC}"
 sleep 10
 
 # 6. 强行初始化数据库结构与管理员账号
-echo -e "\n${YELLOW}[6/7] 执行数据库 Migrations 与初始化 Admin 账号...${NC}"
+echo -e "\n${YELLOW}[6/8] 执行数据库 Migrations 与初始化 Admin 账号...${NC}"
 docker exec -i ai-ecom-app-1 npm run db:migrate 2>/dev/null || true
 docker exec -i ai-ecom-app-1 npm run db:seed 2>/dev/null || true
 
-# 7. 配置 Nginx 反向代理与防火墙 (确保 IP 和域名都能直接打开)
-echo -e "\n${YELLOW}[7/7] 配置 Nginx 反向代理与防火墙端口...${NC}"
+# 7. 配置 Nginx 基础反向代理与放行防火墙
+echo -e "\n${YELLOW}[7/8] 配置 Nginx 域名绑定与防火墙端口...${NC}"
 ufw allow 80/tcp 2>/dev/null || true
 ufw allow 443/tcp 2>/dev/null || true
 
 cat <<EOF > /etc/nginx/sites-available/ai-ecom
 server {
     listen 80;
-    server_name $DOMAIN_NAME _;
+    server_name $DOMAIN_NAME;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -145,10 +152,24 @@ ln -sf /etc/nginx/sites-available/ai-ecom /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 systemctl restart nginx
 
+# 8. 使用 Certbot 自动申请 SSL 证书并开启 HTTPS 强转
+echo -e "\n${YELLOW}[8/8] 申请 Let's Encrypt SSL 免费证书 (HTTPS)...${NC}"
+echo -e "${BLUE}正在为域名 $DOMAIN_NAME 申请证书，请确保域名已解析到当前 VPS IP...${NC}"
+
+if certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$CERT_EMAIL" --redirect; then
+    echo -e "${GREEN}✓ SSL 证书申请并配置成功！已开启 HTTP 到 HTTPS 自动重定向。${NC}"
+else
+    echo -e "${RED}⚠️ SSL 证书申请失败，请检查域名 DNS 解析是否生效，或检查 80 端口是否被占用。${NC}"
+    echo -e "${YELLOW}当前网站仍可通过 HTTP (http://$DOMAIN_NAME) 进行访问。${NC}"
+fi
+
+# 设置 Certbot 自动续期
+systemctl enable certbot.timer 2>/dev/null || true
+
 echo -e "\n${GREEN}================================================${NC}"
 echo -e "${GREEN}          🎉 AI-ECOM 系统部署成功！             ${NC}"
 echo -e "${GREEN}================================================${NC}"
-echo -e "访问地址: ${BLUE}http://${DOMAIN_NAME}${NC} (或直接访问 VPS IP)"
+echo -e "访问地址: ${BLUE}https://${DOMAIN_NAME}${NC}"
 echo -e "管理员账号: ${YELLOW}${ADMIN_USER}${NC}"
 echo -e "管理员密码: ${YELLOW}${ADMIN_PASS}${NC}"
 echo -e "${GREEN}================================================${NC}"
