@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecom-op-center-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://ecom_user:ecom_secure_pass_2026@postgres:5432/ecom_op_center
+      - JWT_SECRET=${JWT_SECRET:-production_super_secret_jwt_key_2026_ecom_center}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_data:/app/data
+      - app_logs:/app/logs
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecom-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ecom_user
+      POSTGRES_PASSWORD: ecom_secure_pass_2026
+      POSTGRES_DB: ecom_op_center
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecom_user -d ecom_op_center"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  app_data:
+  app_logs:

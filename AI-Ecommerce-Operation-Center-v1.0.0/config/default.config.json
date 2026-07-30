@@ -1,0 +1,10 @@
+{
+  "appName": "AI Ecommerce Operation Center",
+  "version": "1.0.0",
+  "defaultCurrency": "USD",
+  "skuPrefix": "PERF",
+  "skuCodeLength": 6,
+  "maxImageUploadMb": 20,
+  "defaultLanguage": "zh-CN",
+  "supportedLanguages": ["zh-CN", "en-US", "es-ES", "de-DE", "fr-FR", "ja-JP"]
+}
