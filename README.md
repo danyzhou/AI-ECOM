@@ -1,4 +1,4 @@
-Markdown# AI Ecommerce Operation Center
+# AI Ecommerce Operation Center
 
 <p naming="badges">
   <a href="VERSION"><img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg" alt="Release v1.0.0"></a>
