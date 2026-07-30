@@ -16,4 +16,4 @@
 只需准备一台干净的 **Ubuntu 20.04 / 22.04 / 24.04 VPS** 并解析好域名，在 VPS 终端中运行以下**一条龙一键安装命令**即可：
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh](https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh) | sudo bash
+curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh | sudo bash
