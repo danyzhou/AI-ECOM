@@ -23,8 +23,36 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# 2. 交互收集配置信息
-echo -e "\n${YELLOW}[1/6] 请输入系统部署配置参数...${NC}"
+# 2. 检查并安装基本依赖 (git, curl, nginx)
+echo -e "\n${YELLOW}[1/6] 检查并自动化安装基础环境依赖...${NC}"
+apt-get update -y && apt-get install -y curl git ufw nginx
+
+if ! command -v docker &> /dev/null; then
+    echo "未检测到 Docker，正在自动安装 Docker..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl start docker
+    systemctl enable docker
+fi
+
+# 3. 自动定位或拉取源码目录 (解决缺少 Dockerfile 问题)
+echo -e "\n${YELLOW}[2/6] 准备项目源码环境...${NC}"
+
+INSTALL_DIR="/opt/AI-ECOM"
+
+if [ -f "./Dockerfile" ]; then
+    echo "当前已在源码目录中，使用当前目录: $(pwd)"
+    INSTALL_DIR=$(pwd)
+else
+    echo "未检测到本地源码，正在克隆项目仓库至 ${INSTALL_DIR} ..."
+    if [ -d "$INSTALL_DIR" ]; then
+        rm -rf "$INSTALL_DIR"
+    fi
+    git clone https://github.com/danyzhou/AI-ECOM.git "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+fi
+
+# 4. 交互收集配置参数
+echo -e "\n${YELLOW}[3/6] 请输入系统部署配置参数...${NC}"
 
 read -p "请输入要绑定的自定义域名 (例如: ecom.yourdomain.com): " DOMAIN_NAME
 while [ -z "$DOMAIN_NAME" ]; do
@@ -54,35 +82,6 @@ while [ -z "$ADMIN_PASS" ]; do
     echo ""
 done
 
-# 3. 检查并自动化安装基础环境依赖
-echo -e "\n${YELLOW}[2/6] 检查并自动化安装基础环境依赖...${NC}"
-
-apt-get update -y && apt-get install -y curl git ufw nginx
-
-if ! command -v docker &> /dev/null; then
-    echo "未检测到 Docker，正在自动安装 Docker..."
-    curl -fsSL https://get.docker.com | sh
-    systemctl start docker
-    systemctl enable docker
-fi
-
-# 4. 自动拉取或定位源码目录
-echo -e "\n${YELLOW}[3/6] 准备项目源码环境...${NC}"
-
-INSTALL_DIR="/opt/AI-ECOM"
-
-if [ -f "./Dockerfile" ]; then
-    echo "已在项目源码目录中执行，跳过 Git Clone..."
-    INSTALL_DIR=$(pwd)
-else
-    echo "正在克隆项目仓库至 ${INSTALL_DIR} ..."
-    if [ -d "$INSTALL_DIR" ]; then
-        rm -rf "$INSTALL_DIR"
-    fi
-    git clone https://github.com/danyzhou/AI-ECOM.git "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
-fi
-
 # 5. 生成动态 .env 环境变量
 echo -e "\n${YELLOW}[4/6] 写入用户定制化的环境变量配置 (.env)...${NC}"
 mkdir -p logs backups data
@@ -105,13 +104,13 @@ JWT_SECRET=${JWT_SECRET}
 ADMIN_INIT_USER=${ADMIN_USER}
 ADMIN_INIT_PASS=${ADMIN_PASS}
 
-# 语言限制 (西语)
+# 语言限制
 TARGET_LANGUAGE=es
 EOF
 
 echo -e "${GREEN}✓ .env 环境变量配置完成${NC}"
 
-# 6. 自动构建并启动 Docker 容器
+# 6. 自动构建并启动 Docker 容器 (移除过期的 version 标签并推荐使用 docker compose)
 echo -e "\n${YELLOW}[5/6] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
 
 cat << 'EOF' > docker-compose.yml
@@ -148,7 +147,7 @@ EOF
 
 docker compose up -d --build
 
-# 7. 配置 Nginx 域名反向代理
+# 7. 配置 Nginx 反向代理
 echo -e "\n${YELLOW}[6/6] 正在配置 Nginx 域名绑定与反向代理...${NC}"
 
 cat << EOF > /etc/nginx/sites-available/ecom-center.conf
@@ -181,6 +180,5 @@ echo -e "${GREEN}  🎉 AI Ecommerce Operation Center 部署完成！        ${N
 echo -e "${BLUE}====================================================${NC}"
 echo -e "访问域名: ${YELLOW}http://${DOMAIN_NAME}${NC}"
 echo -e "管理员账号: ${YELLOW}${ADMIN_USER}${NC}"
-echo -e "管理员密码: ${YELLOW}****** (你设置的密码)${NC}"
 echo -e "项目路径: ${YELLOW}${INSTALL_DIR}${NC}"
 echo -e "${BLUE}====================================================${NC}\n"
