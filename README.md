@@ -10,16 +10,6 @@
 **AI Ecommerce Operation Center** 是一款专为跨境电商卖家、独立站运营团队与 Dropshipping 自动化打造的商品全生命周期 AI 处理与多店铺刊登系统。系统深度集成 **OpenAI 视觉解析** 算法与 **AI 智能西班牙语 SEO 营销文案** 引擎，支持将处理完成的 1:1 精修白底商品一键分发、批量刊登至多个 WordPress WooCommerce 独立站。
 
 ---
-
-## ⚡ 极速一键部署 (One-Click Deployment)
-
-只需准备一台干净的 **Ubuntu 20.04 / 22.04 / 24.04 VPS** 并解析好域名，在 VPS 终端中运行以下**一条龙一键安装命令**即可：
-
-```bash
-curl -sSL [https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh](https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh) | sudo bash
-
----
-
 ##
 💡 说明：运行后将自动交互提示配置自定义域名、PostgreSQL 数据库及管理员账号密码，并全自动安装 Docker、Nginx 反向代理与数据库初始化，无需人工干预！
 📸 项目界面预览 (Screenshots)运营数据大盘 (Dashboard)商品处理与 AI 精修 (Product Studio)多店铺分发刊登 (Publishing Center)WordPress WooCommerce 管理 (Stores)
@@ -70,4 +60,17 @@ curl -sSL [https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh](h
 ⚙️ 配置文件说明 (Configuration Guide)系统所有的核心参数均会在运行 install.sh 时通过交互自动生成并写入 .env 文件：变量名 (Key)说明 (Description)DOMAIN_NAME系统主域名 (例: ecom.yourdomain.com)POSTGRES_DBPostgreSQL 数据库名POSTGRES_USERPostgreSQL 数据库用户名POSTGRES_PASSWORDPostgreSQL 数据库强密码ADMIN_INIT_USER系统初始 Root 管理员账号ADMIN_INIT_PASS系统初始 Root 管理员密码JWT_SECRETJWT 鉴权加密密钥OPENAI_API_KEYOpenAI API Key (图文解析用)
 🔑 AI API 密钥与后台管理安装完成后，登录系统 Web 后台，导航至 Settings (系统设置) 菜单中：修改管理员：可随时更改管理员用户名与登录密码。API Key 配置：配置 OpenAI API Key 充当“AI 智能”图片处理与文本生成引擎。域名与数据库设置：在线校验数据库连通性与绑定域名。
 🛒 WooCommerce 店铺接入说明 (WooCommerce Store Config)进入目标 WordPress 网站后台，导航至 WooCommerce > Settings > Advanced > REST API。点击 Add Key，Description 填写 AI-Ecommerce，Permissions 必须选择 Read/Write。复制生成的 Consumer Key 与 Consumer Secret。打开本系统的 WordPress Stores 菜单，录入店铺网址及 Key/Secret 即可完成一键绑定。
+---
+
+## ⚡ 极速一键部署 (One-Click Deployment)
+
+只需准备一台干净的 **Ubuntu 20.04 / 22.04 / 24.04 VPS** 并解析好域名，在 VPS 终端中运行以下**一条龙一键安装命令**即可：
+
+```bash
+curl -sSL [https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh](https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh) | sudo bash
+---
+
+##
+
+
 📜 许可证 (License)本项目采用 MIT License 协议开源。
