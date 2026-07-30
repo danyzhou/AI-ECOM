@@ -18,6 +18,8 @@
 ```bash
 curl -sSL [https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh](https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh) | sudo bash
 
+---
+
 💡 命令包含自动化集成：运行后将自动交互提示配置自定义域名、PostgreSQL 数据库及管理员账号密码，并全自动安装 Docker、Nginx 反向代理与数据库初始化，无需人工干预！📸 项目界面预览 (Screenshots)运营数据大盘 (Dashboard)商品处理与 AI 精修 (Product Studio)多店铺分发刊登 (Publishing Center)WordPress WooCommerce 管理 (Stores)✨ 核心功能亮点 (Key Features)🎨 AI 智能图像修图与解析 (OpenAI Vision)自动定位并清除供应商图片中的水印、Logo 与杂乱干扰。智能主体抠图，一键生成符合 Amazon / Google Shopping 规范的标准 1:1 白底图。支持 1:1, 3:4, 16:9 比例一键适配裁剪与高清优化。✍️ AI 智能专有文案与 SEO 引擎 (独占西班牙语)自动提炼核心卖点，输出带有 HTML 完美排版的长描述、短描述与结构化参数列表。精细化西语市场：全系统严格遵循西班牙语（Spanish）电商语境生成，全面提升拉美及西班牙地区的转化率。智能生成符合 Google SEO 梯度的 Meta Title、Meta Description 及 URL Slug。🏬 WordPress WooCommerce 多店铺统一管理无缝绑定并实时监控多台 WooCommerce 独立站的连通健康度。自动同步分类与标签，支持图片画廊与价格/促销价精确刊登。支持单键一键发布与多店铺一键批量排期刊登。🔢 数据库级高并发 SKU 锁机制PostgreSQL 事务互斥锁保障 SKU 序列号生成，支持前缀、代码长度补零与自定义递增规则，100% 防重。🚀 全自动化 Docker + PostgreSQL + Nginx 生产环境内置开箱即用的一键脚本，自动集成域名反向代理绑定、系统自启服务与数据库自动持久化备份。🏗️ 系统架构设计 (System Architecture)Plaintext┌─────────────────────────────────────────────────────────────┐
 │                  Client Browser (Web UI)                    │
 └──────────────────────────────┬──────────────────────────────┘
