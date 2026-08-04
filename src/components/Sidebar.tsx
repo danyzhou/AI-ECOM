@@ -59,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const config = liveAiConfig || aiConfig;
     const provider = config?.provider || 'gemini';
     
-    let providerName = 'Google Gemini';
+    let providerName = 'Google AI智能';
     let model = config?.gemini?.model || config?.geminiModel || 'gemini-2.0-flash';
 
     if (provider === 'groq') {

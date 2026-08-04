@@ -202,3 +202,63 @@ export function verifyJWTToken(token: string): any | null {
     return null;
   }
 }
+
+// Update Admin Credentials in DB and File Storage
+export async function updateAdminCredentials(
+  userId: string,
+  newUsername?: string,
+  newPasswordRaw?: string
+): Promise<DBUserRecord> {
+  const pool = getPgPool();
+  const localUsers = readJSONFile<DBUserRecord[]>(USERS_FILE, []);
+  let userIndex = localUsers.findIndex(u => u.id === userId || u.role === "admin" || u.username === "admin");
+
+  if (userIndex === -1 && localUsers.length > 0) {
+    userIndex = 0;
+  }
+
+  let existingUser: DBUserRecord;
+  if (userIndex >= 0) {
+    existingUser = localUsers[userIndex];
+  } else {
+    existingUser = {
+      id: userId || "usr-admin-01",
+      username: "admin",
+      password_hash: bcrypt.hashSync("admin123", 10),
+      salt: "bcrypt",
+      name: "E-Com Director (Admin)",
+      email: "admin@ecom-ai.com",
+      role: "admin",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+      created_at: new Date().toISOString()
+    };
+    localUsers.push(existingUser);
+    userIndex = localUsers.length - 1;
+  }
+
+  if (newUsername && newUsername.trim()) {
+    existingUser.username = newUsername.trim().toLowerCase();
+  }
+  if (newPasswordRaw && newPasswordRaw.trim()) {
+    existingUser.password_hash = bcrypt.hashSync(newPasswordRaw.trim(), 10);
+    existingUser.salt = "bcrypt";
+  }
+  existingUser.updated_at = new Date().toISOString();
+
+  localUsers[userIndex] = existingUser;
+  writeJSONFile(USERS_FILE, localUsers);
+
+  if (pool) {
+    try {
+      await pool.query(
+        `UPDATE users SET username = $1, password_hash = $2, salt = $3, updated_at = NOW() WHERE id = $4 OR role = 'admin'`,
+        [existingUser.username, existingUser.password_hash, existingUser.salt, existingUser.id]
+      );
+    } catch (err: any) {
+      console.warn("[AUTH-DB] PostgreSQL update admin credentials error:", err.message);
+    }
+  }
+
+  return existingUser;
+}
+

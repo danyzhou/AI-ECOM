@@ -16,7 +16,7 @@ import {
   runGeminiVisionStep,
   runGeminiContentStep
 } from "./server/ai/aiManager.js";
-import { callGeminiWithRetry, callOpenAICompatibleAPI, extractAndParseJSON, ensureSlimImageInput } from "./server/ai/geminiService.js";
+import { callGeminiWithRetry, callOpenAICompatibleAPI, extractAndParseJSON, ensureSlimImageInput, processProductImageWithAI } from "./server/ai/geminiService.js";
 import { getSystemLogs, clearSystemLogs } from "./server/logging/logService.js";
 import {
   getSKUConfig,
@@ -46,7 +46,20 @@ import {
   WordPressPostRecord
 } from "./server/woocommerce/publisherService.js";
 
-import { initDatabase } from "./server/db/databaseService.js";
+import {
+  initDatabase,
+  getDbProducts,
+  saveDbProduct,
+  deleteDbProduct,
+  getDbTasks,
+  saveDbTask,
+  deleteDbTask,
+  getSystemDomain,
+  saveSystemDomain,
+  getDbConfig,
+  saveDbConfig,
+  testDatabaseConnection
+} from "./server/db/databaseService.js";
 import {
   seedAdminUser,
   findUserByUsernameOrEmail,
@@ -54,6 +67,7 @@ import {
   verifyUserPassword,
   generateJWTToken,
   verifyJWTToken,
+  updateAdminCredentials,
   DBUserRecord
 } from "./server/db/userService.js";
 
@@ -937,12 +951,19 @@ app.post("/api/gemini/generate-product-content", async (req, res) => {
 
 // Products API Routes
 app.get("/api/products", (req, res) => {
-  const products = Array.from(productsDb.values());
+  let products = getDbProducts();
+  if (!products || products.length === 0) {
+    products = Array.from(productsDb.values());
+    products.forEach((p: any) => saveDbProduct(p));
+  } else {
+    products.forEach((p: any) => productsDb.set(p.id, p));
+  }
   res.json({ success: true, products });
 });
 
 app.get("/api/products/:id", (req, res) => {
-  const product = productsDb.get(req.params.id);
+  const products = getDbProducts();
+  let product = products.find((p: any) => p.id === req.params.id) || productsDb.get(req.params.id);
   if (!product) {
     return res.status(404).json({ error: "找不到该商品" });
   }
@@ -956,15 +977,15 @@ app.post("/api/products/save", (req, res) => {
   }
   product.updatedAt = new Date().toISOString();
   productsDb.set(product.id, product);
+  saveDbProduct(product);
   res.json({ success: true, product, message: "商品资料成功保存到数据库！" });
 });
 
-app.delete("/api/products/:id", (req, res) => {
-  if (!productsDb.has(req.params.id)) {
-    return res.status(404).json({ error: "商品不存在" });
-  }
-  productsDb.delete(req.params.id);
-  res.json({ success: true, message: "商品已成功从数据库删除" });
+app.delete("/api/products/:id", async (req, res) => {
+  const id = req.params.id;
+  productsDb.delete(id);
+  await deleteDbProduct(id);
+  res.json({ success: true, message: "商品已成功从数据库永久删除" });
 });
 
 // ----------------------------------------------------
@@ -1044,12 +1065,27 @@ app.post("/api/ai/proxy", async (req, res) => {
 
     // Special Action Branch: E-Commerce Product Content Generation Proxy
     if (action === "generate_content" || (!messages && (imageInput || userNotes || prompt))) {
-      const generatedData = await runGeminiContentStep({
-        imageInput: slimImage,
-        userNotes: userNotes || prompt,
-        costPrice: costPrice ? Number(costPrice) : undefined,
-        language
-      });
+      let generatedData: any = null;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          generatedData = await runGeminiContentStep({
+            imageInput: req.body.visionAnalysis ? undefined : slimImage,
+            visionAnalysis: req.body.visionAnalysis,
+            userNotes: userNotes || prompt,
+            costPrice: costPrice ? Number(costPrice) : undefined,
+            language
+          });
+          break;
+        } catch (err: any) {
+          const is502or504 = err.message?.includes("502") || err.message?.includes("504") || err.message?.includes("timeout") || err.message?.includes("fetch failed");
+          if (is502or504 && attempt < 2) {
+            console.warn(`[/api/ai/proxy 生成文案 HTTP 502/504/超时] 正在等待 2 秒后自动进行第 ${attempt + 1} 次重试...`);
+            await new Promise(r => setTimeout(r, 2000));
+            continue;
+          }
+          throw err;
+        }
+      }
       return res.json({
         success: true,
         content: generatedData,
@@ -1065,25 +1101,38 @@ app.post("/api/ai/proxy", async (req, res) => {
     ];
 
     let replyText = "";
-    if (activeProvider === "gemini" && !targetBaseUrl) {
-      const ai = new GoogleGenAI({ apiKey: targetApiKey });
-      const promptText = formattedMessages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join("\n");
-      const response = await callGeminiWithRetry(() =>
-        ai.models.generateContent({
-          model: targetModel,
-          contents: promptText
-        })
-      );
-      replyText = response?.text || "";
-    } else {
-      replyText = await callOpenAICompatibleAPI({
-        baseUrl: targetBaseUrl,
-        apiKey: targetApiKey,
-        model: targetModel,
-        messages: formattedMessages,
-        temperature: temperature ?? 0.3,
-        jsonMode: jsonMode === true
-      });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (activeProvider === "gemini" && !targetBaseUrl) {
+          const ai = new GoogleGenAI({ apiKey: targetApiKey });
+          const promptText = formattedMessages.map((m: any) => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join("\n");
+          const response = await callGeminiWithRetry(() =>
+            ai.models.generateContent({
+              model: targetModel,
+              contents: promptText
+            })
+          );
+          replyText = response?.text || "";
+        } else {
+          replyText = await callOpenAICompatibleAPI({
+            baseUrl: targetBaseUrl,
+            apiKey: targetApiKey,
+            model: targetModel,
+            messages: formattedMessages,
+            temperature: temperature ?? 0.3,
+            jsonMode: jsonMode === true
+          });
+        }
+        break;
+      } catch (err: any) {
+        const is502or504 = err.message?.includes("502") || err.message?.includes("504") || err.message?.includes("timeout") || err.message?.includes("fetch failed");
+        if (is502or504 && attempt < 2) {
+          console.warn(`[/api/ai/proxy 转发遇到 HTTP 502/504/超时] 正在等待 2 秒后自动进行第 ${attempt + 1} 次重试...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        throw err;
+      }
     }
 
     let parsedJson = null;
@@ -1732,8 +1781,118 @@ app.post("/api/woocommerce/retry/:productId", async (req, res) => {
 
 // 6. AI Workflow Pipeline Management (Task 1 -> Task 2 -> Task 3 -> Task 4)
 app.get("/api/workflow/tasks", (req, res) => {
-  res.json({ success: true, tasks: pipelineTasksList });
+  let tasks = getDbTasks();
+  if (!tasks || tasks.length === 0) {
+    tasks = pipelineTasksList;
+    tasks.forEach((t: any) => saveDbTask(t));
+  }
+  res.json({ success: true, tasks });
 });
+
+const deleteTaskHandler = (req: Request, res: Response) => {
+  const id = req.params.id;
+  pipelineTasksList = pipelineTasksList.filter((t: any) => t.id !== id);
+  deleteDbTask(id);
+  res.json({ success: true, message: "AI 任务已成功从数据库删除" });
+};
+
+app.delete("/api/workflow/tasks/:id", deleteTaskHandler);
+app.delete("/api/tasks/:id", deleteTaskHandler);
+
+// Admin Account Management
+app.post("/api/settings/admin-account", authenticateToken, requireAdminRole, async (req, res) => {
+  try {
+    const { currentUsername, newUsername, currentPassword, newPassword } = req.body;
+    
+    if (newPassword && newPassword.length < 6) {
+      return res.status(400).json({ error: "新密码强度不足：密码长度不能少于 6 位字符！" });
+    }
+
+    const reqAny = req as any;
+    const updatedAdmin = await updateAdminCredentials(reqAny.user?.id || "usr-admin-01", newUsername, newPassword);
+    
+    // Invalidate active session/token
+    if (reqAny.token) {
+      activeSessions.delete(reqAny.token);
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: updatedAdmin.id,
+        username: updatedAdmin.username,
+        name: updatedAdmin.name,
+        email: updatedAdmin.email,
+        role: updatedAdmin.role,
+        avatar: updatedAdmin.avatar
+      },
+      message: "管理员账号与密码已成功更新并保存数据库！旧 Token 已失效，请重新登录。"
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "更新管理员凭证失败" });
+  }
+});
+
+// Custom Domain Management
+app.get("/api/settings/custom-domain", (req, res) => {
+  res.json({ success: true, customDomain: getSystemDomain() });
+});
+
+app.post("/api/settings/custom-domain", authenticateToken, (req, res) => {
+  const { customDomain } = req.body;
+  if (!customDomain || typeof customDomain !== "string") {
+    return res.status(400).json({ error: "请输入有效的自定义域名" });
+  }
+  saveSystemDomain(customDomain.trim());
+  res.json({ success: true, customDomain: customDomain.trim(), message: "自定义域名已成功绑定并保存数据库！" });
+});
+
+// Database Connectivity Test & Config Save
+app.post("/api/db/test-connection", authenticateToken, async (req, res) => {
+  try {
+    const { host, port, database, user, password, dbType = "postgresql" } = req.body;
+    const testResult = await testDatabaseConnection({ host, port, database, user, password, dbType });
+    res.json(testResult);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || "测试数据库连通性失败" });
+  }
+});
+
+app.post("/api/db/save-config", authenticateToken, async (req, res) => {
+  try {
+    const { host, port, database, user, password, dbType = "postgresql" } = req.body;
+    saveDbConfig({ host, port, database, user, password, dbType });
+    await initDatabase();
+    res.json({ success: true, message: "数据库连接配置已成功保存并重新初始化！" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "保存数据库配置失败" });
+  }
+});
+
+// Environment Initialization & Database Migration Endpoint
+const handleSystemInit = async (req: Request, res: Response) => {
+  try {
+    const { adminUsername = "admin", adminPassword = "admin123", adminEmail = "admin@ecom-ai.com", customDomain } = req.body || {};
+    
+    await initDatabase();
+    await seedAdminUser();
+    
+    if (customDomain) {
+      saveSystemDomain(customDomain);
+    }
+    
+    res.json({
+      success: true,
+      message: "系统环境、数据库表结构 (Database Schema) 及管理员凭证已成功初始化！",
+      initializedAt: new Date().toISOString()
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "系统初始化失败" });
+  }
+};
+
+app.post("/api/system/init", handleSystemInit);
+app.get("/api/system/init", handleSystemInit);
 
 // Full Pipeline Automation Runner (Real APIs: Gemini Vision -> Gemini Content -> WooCommerce)
 app.post("/api/workflow/run-pipeline", async (req, res) => {
@@ -1777,16 +1936,28 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
 
   try {
     // ----------------------------------------------------
-    // Step 1: AI Multimodal Vision Analysis
+    // Step 1: AI Multimodal Vision Analysis & Image Enhancement
     // ----------------------------------------------------
-    log("[Step 1: AI 智能 Vision] 发起 AI 智能 Vision 图像特征识别...");
+    log("[Step 1: AI 智能 Vision] 发起 AI 智能 Vision 图像特征识别与处理...");
     const visionAnalysis = await runGeminiVisionStep(sourceImage);
     log(`[Step 1: AI 智能 Vision 成功] 识别商品名称: ${visionAnalysis.name}, 材质: ${visionAnalysis.material}, 品牌: ${visionAnalysis.brand}`);
 
+    const targetRatio = req.body.image_ratio || req.body.imageRatio || "1:1";
+    log(`[Step 1: AI 图像美化] 真实调用 AI 图像 API 处理美化主图 (比例: ${targetRatio})...`);
+    const processedImage = await processProductImageWithAI({
+      imageInput: sourceImage,
+      ratio: targetRatio,
+      userNotes,
+      visionAnalysis,
+      hostOrigin
+    });
+    log(`[Step 1: AI 图像美化成功] 已绑定美化输出主图`);
+
     initialTask.geminiVision = visionAnalysis;
+    initialTask.optimizedImage = processedImage;
     initialTask.currentStep = "image_completed";
     initialTask.progress = 40;
-    initialTask.message = "AI 智能图像识别完成，正在请求 AI 智能生成完整商品文案与 SEO...";
+    initialTask.message = "AI 智能图像处理与美化完成，正在生成商品文案与 SEO...";
 
     // ----------------------------------------------------
     // Step 2: AI Content & SEO Generation
@@ -1794,21 +1965,22 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
     log("[Step 2: AI 智能] 结合结构化图像特征数据，调用 AI 智能生成商品文案与 SEO...");
     const generatedProductData = await runGeminiContentStep({
       visionAnalysis,
-      imageInput: sourceImage,
+      imageInput: processedImage,
       userNotes,
       costPrice: costPrice ? Number(costPrice) : undefined,
       language
     });
 
-    log(`[Step 2: AI 智能 成功] 生成标题: "${generatedProductData.title}", SKU: ${autoSku}`);
+    const finalSku = generatedProductData.sku || autoSku;
+    log(`[Step 2: AI 智能 成功] 生成标题: "${generatedProductData.title}", SKU: ${finalSku}`);
 
     const createdProduct: any = {
       id: initialTask.productId,
       ...generatedProductData,
-      sku: autoSku,
-      mainImage: sourceImage,
-      optimizedMainImage: sourceImage,
-      galleryImages: [sourceImage],
+      sku: finalSku,
+      mainImage: processedImage,
+      optimizedMainImage: processedImage,
+      galleryImages: [processedImage],
       status: "pending_review",
       source: { type: "upload" },
       createdAt: new Date().toISOString(),
@@ -1857,10 +2029,10 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
       }
 
       // Upload Media
-      log(`[Step 3: WP Media] 上传主图至站点媒体库: ${targetStoreConfig.siteUrl}`);
-      let mediaResult: { media_id?: number; image_url: string } = { media_id: undefined, image_url: sourceImage };
+      log(`[Step 3: WP Media] 上传 AI 美化主图至站点媒体库: ${targetStoreConfig.siteUrl}`);
+      let mediaResult: { media_id?: number; image_url: string } = { media_id: undefined, image_url: processedImage };
       try {
-        mediaResult = await uploadMedia(targetStoreConfig, sourceImage, `${autoSku}.jpg`);
+        mediaResult = await uploadMedia(targetStoreConfig, processedImage, `${finalSku}.jpg`);
       } catch (mediaErr: any) {
         log(`[Step 3: WP Media 警告] ${mediaErr.message}，将直接使用图片原链接发布`);
       }
@@ -2140,9 +2312,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`[AI ECOM SERVER] Running on http://0.0.0.0:${PORT}`);
   });
+
+  server.headersTimeout = 310000;
+  server.requestTimeout = 300000;
+  server.keepAliveTimeout = 300000;
 }
 
 startServer();

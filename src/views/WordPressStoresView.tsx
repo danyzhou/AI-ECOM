@@ -42,6 +42,61 @@ export const WordPressStoresView: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [copiedCss, setCopiedCss] = useState(false);
+
+  const wcGridCssSnippet = `/* ==========================================================================
+   WooCommerce Product Loop Grid Refactored Styles
+   解决商品图片大小视觉不一、多行标题导致价格与加入购物车按钮对齐不均问题
+   ========================================================================== */
+
+/* 1. 统一商品卡片容器为 Flex 弹性盒，纵向自适应等高布局 */
+.products .product,
+.wc-block-grid__product,
+.woocommerce ul.products li.product,
+.woocommerce-page ul.products li.product {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  justify-content: space-between;
+}
+
+/* 确保带链接包裹层也能纵向撑开 */
+.products .product .woocommerce-loop-product__link,
+.woocommerce ul.products li.product .woocommerce-loop-product__link {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+/* 2. 将商品标题（Title）下方的价格、评分及加入购物车按钮区域自动顶到底部对齐 */
+.products .product .price,
+.products .product .button,
+.products .product .add_to_cart_button,
+.wc-block-grid__product .price,
+.wc-block-grid__product .wp-block-button,
+.woocommerce ul.products li.product .price,
+.woocommerce ul.products li.product .button,
+.woocommerce ul.products li.product .add_to_cart_button {
+  margin-top: auto;
+}
+
+/* 3. 强制固定图片容器尺寸与显示模式，确保纯白底图充满容器不上裁不形变 */
+.products .product img,
+.products .product a img,
+.wc-block-grid__product img,
+.woocommerce ul.products li.product img,
+.woocommerce ul.products li.product a img {
+  width: 100%;
+  height: 280px;
+  object-fit: contain;
+  background-color: #ffffff;
+}`;
+
+  const handleCopyCss = () => {
+    navigator.clipboard.writeText(wcGridCssSnippet);
+    setCopiedCss(true);
+    setTimeout(() => setCopiedCss(false), 3000);
+  };
 
   useEffect(() => {
     loadStores();
@@ -345,6 +400,48 @@ export const WordPressStoresView: React.FC = () => {
             </table>
           </div>
         )}
+      </div>
+
+      {/* WooCommerce 商品网格（Product Loop Grid）样式优化与对齐修复建议 */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">WooCommerce 商品网格（Product Loop Grid）等高对齐与图框重构样式</h3>
+              <p className="text-xs text-slate-400">
+                彻底解决商品图片大小视觉不一、多行标题导致下方价格/购物车按钮无法水平对齐的问题
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleCopyCss}
+            className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition shrink-0"
+          >
+            {copiedCss ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-300" />
+                <span className="text-emerald-200">已复制到剪贴板！</span>
+              </>
+            ) : (
+              <>
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>一键复制样式代码 (额外 CSS)</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-x-auto text-xs font-mono text-slate-300 space-y-2">
+          <div className="text-slate-500 text-[11px] mb-1">
+            # 说明：复制以下代码并粘贴到您的 WordPress 后台 ➔【外观 (Appearance)】➔【自定义 (Customize)】➔【额外 CSS (Additional CSS)】中保存即可立即生效。
+          </div>
+          <pre className="text-[11px] leading-relaxed text-indigo-300 whitespace-pre">
+            {wcGridCssSnippet}
+          </pre>
+        </div>
       </div>
 
       {/* Add / Edit Store Modal */}

@@ -70,11 +70,15 @@ export interface Product {
   // Pricing & Economics
   price: number;
   promoPrice: number;
+  regular_price?: string;
+  sale_price?: string;
   costPrice: number;
   estimatedMargin: number; // percentage e.g. 65.5
   
   // Logistics & Stock
   stock: number;
+  manage_stock?: boolean;
+  stock_quantity?: number;
   weight: number; // kg
   dimensions: ProductDimensions;
   

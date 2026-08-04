@@ -187,6 +187,7 @@ export async function runAIPipeline(payload: {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(sanitizedPayload),
+    signal: AbortSignal.timeout(300000), // 5 Minutes Timeout
   });
   const data = await res.json();
   if (!res.ok) {
@@ -424,7 +425,11 @@ export async function deleteProduct(id: string): Promise<{ success: boolean; mes
     method: 'DELETE',
     headers: getAuthHeaders(),
   });
-  return await res.json();
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || '从服务器删除商品失败');
+  }
+  return data;
 }
 
 export async function generateGeminiProductContent(payload: {
@@ -442,6 +447,7 @@ export async function generateGeminiProductContent(payload: {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(300000), // 5 Minutes Timeout
   });
   const data = await res.json();
   if (!res.ok) {
@@ -531,26 +537,121 @@ export async function clearSystemLogs() {
   return await res.json();
 }
 
-export async function sendAIChatProxy(payload: {
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }>;
-  model?: string;
-  provider?: string;
-  baseUrl?: string;
-  apiKey?: string;
-  jsonMode?: boolean;
-  temperature?: number;
+export async function deleteProductApi(productId: string) {
+  const res = await fetch(`/api/products/${productId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '删除商品失败');
+  }
+  return data;
+}
+
+export async function deleteAITask(taskId: string) {
+  const res = await fetch(`/api/workflow/tasks/${taskId}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '删除 AI 任务失败');
+  }
+  return data;
+}
+
+export async function updateAdminAccount(payload: {
+  currentUsername?: string;
+  newUsername?: string;
+  currentPassword?: string;
+  newPassword?: string;
 }) {
-  const res = await fetch('/api/ai/chat', {
+  const res = await fetch('/api/settings/admin-account', {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(payload),
   });
   const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || 'AI BFF 网关代理调用失败');
+  if (!res.ok) {
+    throw new Error(data.error || '更新管理员凭证失败');
   }
   return data;
 }
+
+export async function getCustomDomain() {
+  const res = await fetch('/api/settings/custom-domain', {
+    headers: getAuthHeaders(),
+  });
+  return await res.json();
+}
+
+export async function saveCustomDomain(customDomain: string) {
+  const res = await fetch('/api/settings/custom-domain', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ customDomain }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '保存自定义域名失败');
+  }
+  return data;
+}
+
+export async function testDbConnection(config: {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password?: string;
+  dbType: string;
+}) {
+  const res = await fetch('/api/db/test-connection', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(config),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || data.error || '测试数据库连接失败');
+  }
+  return data;
+}
+
+export async function saveDbConfig(config: {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password?: string;
+  dbType: string;
+}) {
+  const res = await fetch('/api/db/save-config', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(config),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '保存数据库配置失败');
+  }
+  return data;
+}
+
+export async function initSystem(payload?: any) {
+  const res = await fetch('/api/system/init', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || '系统与数据库初始化失败');
+  }
+  return data;
+}
+
 
 
 

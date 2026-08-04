@@ -1,175 +1,84 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -e
 
-# 颜色定义
+# AI Ecommerce Operation Center - One-Click Production Installer
+# Stack: React 19 + Vite + Express + Node.js + PostgreSQL
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
+YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-PROJECT_DIR="/opt/AI-ECOM"
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}    AI Ecommerce Operation Center 生产部署安装器      ${NC}"
+echo -e "${BLUE}====================================================${NC}"
 
-echo -e "${BLUE}================================================${NC}"
-echo -e "${GREEN}    AI-ECOM 一键自动化部署与 SSL 证书配置脚本      ${NC}"
-echo -e "${BLUE}================================================${NC}"
+# 1. Check prerequisites
+echo -e "\n${YELLOW}[1/6] 检查系统环境依赖...${NC}"
 
-# 1. 检查并安装基础环境依赖 (包含 certbot 和 python3-certbot-nginx)
-echo -e "\n${YELLOW}[1/8] 检查并自动化安装基础环境依赖...${NC}"
-apt-get update -y
-apt-get install -y curl git nginx ufw util-linux certbot python3-certbot-nginx
-
-# 检查/启动 Docker
-if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}未检测到 Docker，正在安装 Docker...${NC}"
-    curl -fsSL https://get.docker.com | sh
-fi
-systemctl enable --now docker
-
-# 2. 自动开启 Swap 虚拟内存 (防止 1G/2G 内存 VPS 在 npm build 时被 Killed)
-echo -e "\n${YELLOW}[2/8] 检查并配置 Swap 虚拟内存...${NC}"
-SWAP_SIZE=$(free -m | awk '/Swap:/ {print $2}')
-if [ -z "$SWAP_SIZE" ] || [ "$SWAP_SIZE" -lt 1000 ]; then
-    echo -e "${YELLOW}检测到 Swap 内存小于 1GB，正在自动创建 2GB Swap 交换分区...${NC}"
-    swapoff -a 2>/dev/null || true
-    rm -f /swapfile 2>/dev/null || true
-    fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    if ! grep -q '/swapfile' /etc/fstab; then
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-    fi
-    echo -e "${GREEN}✓ Swap 2GB 配置成功${NC}"
+if command -v docker >/dev/null 2>&1 && command -v docker-compose >/dev/null 2>&1; then
+    HAS_DOCKER=true
+    echo -e "${GREEN}✓ Docker & Docker Compose 已就绪${NC}"
 else
-    echo -e "${GREEN}✓ Swap 空间充足 ($SWAP_SIZE MB)${NC}"
+    HAS_DOCKER=false
+    echo -e "${YELLOW}! 未检测到 Docker Compose，将使用本地 Node.js 运行模式${NC}"
 fi
 
-# 3. 准备项目源码环境与补全缺失文件
-echo -e "\n${YELLOW}[3/8] 准备项目源码环境...${NC}"
-if [ ! -d "$PROJECT_DIR" ]; then
-    echo "正在克隆项目仓库至 $PROJECT_DIR ..."
-    git clone https://github.com/danyzhou/AI-ECOM.git "$PROJECT_DIR"
+if ! command -v node >/dev/null 2>&1 && [ "$HAS_DOCKER" = false ]; then
+    echo -e "${RED}✗ 错误: 既未安装 Docker 也未安装 Node.js (v18+)，无法继续。${NC}"
+    exit 1
 fi
 
-cd "$PROJECT_DIR"
-
-# 自动补齐 public 目录（避免 Dockerfile COPY 报错）
-mkdir -p "$PROJECT_DIR/public"
-touch "$PROJECT_DIR/public/.gitkeep"
-
-# 自动修复 Dockerfile 中的 public 复制逻辑 (若存在)
-if [ -f "Dockerfile" ]; then
-    sed -i 's/COPY --from=builder \/app\/public \.\/public/# COPY --from=builder \/app\/public \.\/public/' Dockerfile
-fi
-
-# 4. 配置环境变量与域名参数
-echo -e "\n${YELLOW}[4/8] 请输入系统部署配置参数...${NC}"
-read -p "请输入要绑定的自定义域名 (例如: ecom.yourdomain.com): " DOMAIN_NAME
-while [ -z "$DOMAIN_NAME" ]; do
-    read -p "域名不能为空，请输入自定义域名: " DOMAIN_NAME
-done
-
-read -p "请输入用于接收 SSL 证书到期提醒的邮箱: " CERT_EMAIL
-while [ -z "$CERT_EMAIL" ]; do
-    read -p "邮箱不能为空，请输入常用邮箱: " CERT_EMAIL
-done
-
-read -p "请输入 PostgreSQL 数据库名称 [默认: ecom_op_center]: " DB_NAME
-DB_NAME=${DB_NAME:-"ecom_op_center"}
-
-read -p "请输入 PostgreSQL 数据库用户名 [默认: ecom_user]: " DB_USER
-DB_USER=${DB_USER:-"ecom_user"}
-
-read -p "请设置 PostgreSQL 数据库密码: " DB_PASS
-while [ -z "$DB_PASS" ]; do
-    read -p "密码不能为空，请重新设置 PostgreSQL 数据库密码: " DB_PASS
-done
-
-read -p "请输入系统管理员用户名 [默认: admin]: " ADMIN_USER
-ADMIN_USER=${ADMIN_USER:-"admin"}
-
-read -p "请设置系统管理员密码: " ADMIN_PASS
-while [ -z "$ADMIN_PASS" ]; do
-    read -p "密码不能为空，请重新设置系统管理员密码: " ADMIN_PASS
-done
-
-# 写入 .env
-cat <<EOF > .env
-NODE_ENV=production
+# 2. Setup environment configuration
+echo -e "\n${YELLOW}[2/6] 初始化生产环境变量配置...${NC}"
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        cp .env.example .env
+        echo -e "${GREEN}✓ 已从 .env.example 生成 .env 配置文件${NC}"
+    else
+        cat << 'EOF' > .env
 PORT=3000
-DOMAIN_NAME=$DOMAIN_NAME
-
-POSTGRES_DB=$DB_NAME
-POSTGRES_USER=$DB_USER
-POSTGRES_PASSWORD=$DB_PASS
-DATABASE_URL=postgresql://$DB_USER:$DB_PASS@postgres:5432/$DB_NAME
-
-ADMIN_USER=$ADMIN_USER
-ADMIN_PASSWORD=$ADMIN_PASS
+NODE_ENV=production
+DATABASE_URL=postgres://ecom_user:ecom_secure_pass_2026@localhost:5432/ecom_op_center
+JWT_SECRET=production_super_secret_jwt_key_2026_ecom_center
+OPENAI_API_KEY=
+GEMINI_API_KEY=
 EOF
-
-echo -e "${GREEN}✓ .env 环境变量配置完成${NC}"
-
-# 5. 清理损坏数据卷并构建启动 Docker 容器
-echo -e "\n${YELLOW}[5/8] 启动 PostgreSQL 数据库与 Node.js 服务容器...${NC}"
-docker compose down -v 2>/dev/null || true
-docker compose up -d --build
-
-# 等待 PostgreSQL 数据库完全准备完毕
-echo -e "${YELLOW}等待数据库健康就绪...${NC}"
-sleep 10
-
-# 6. 强行初始化数据库结构与管理员账号
-echo -e "\n${YELLOW}[6/8] 执行数据库 Migrations 与初始化 Admin 账号...${NC}"
-docker exec -i ai-ecom-app-1 npm run db:migrate 2>/dev/null || true
-docker exec -i ai-ecom-app-1 npm run db:seed 2>/dev/null || true
-
-# 7. 配置 Nginx 基础反向代理与放行防火墙
-echo -e "\n${YELLOW}[7/8] 配置 Nginx 域名绑定与防火墙端口...${NC}"
-ufw allow 80/tcp 2>/dev/null || true
-ufw allow 443/tcp 2>/dev/null || true
-
-cat <<EOF > /etc/nginx/sites-available/ai-ecom
-server {
-    listen 80;
-    server_name $DOMAIN_NAME;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    }
-}
-EOF
-
-ln -sf /etc/nginx/sites-available/ai-ecom /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
-systemctl restart nginx
-
-# 8. 使用 Certbot 自动申请 SSL 证书并开启 HTTPS 强转
-echo -e "\n${YELLOW}[8/8] 申请 Let's Encrypt SSL 免费证书 (HTTPS)...${NC}"
-echo -e "${BLUE}正在为域名 $DOMAIN_NAME 申请证书，请确保域名已解析到当前 VPS IP...${NC}"
-
-if certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$CERT_EMAIL" --redirect; then
-    echo -e "${GREEN}✓ SSL 证书申请并配置成功！已开启 HTTP 到 HTTPS 自动重定向。${NC}"
+        echo -e "${GREEN}✓ 已全新创建默认 .env 配置文件${NC}"
+    fi
 else
-    echo -e "${RED}⚠️ SSL 证书申请失败，请检查域名 DNS 解析是否生效，或检查 80 端口是否被占用。${NC}"
-    echo -e "${YELLOW}当前网站仍可通过 HTTP (http://$DOMAIN_NAME) 进行访问。${NC}"
+    echo -e "${GREEN}✓ 检测到已存在 .env 配置文件${NC}"
 fi
 
-# 设置 Certbot 自动续期
-systemctl enable certbot.timer 2>/dev/null || true
+# 3. Create required runtime directories
+echo -e "\n${YELLOW}[3/6] 创建运行日志与备份目录...${NC}"
+mkdir -p logs backups data
 
-echo -e "\n${GREEN}================================================${NC}"
-echo -e "${GREEN}          🎉 AI-ECOM 系统部署成功！             ${NC}"
-echo -e "${GREEN}================================================${NC}"
-echo -e "访问地址: ${BLUE}https://${DOMAIN_NAME}${NC}"
-echo -e "管理员账号: ${YELLOW}${ADMIN_USER}${NC}"
-echo -e "管理员密码: ${YELLOW}${ADMIN_PASS}${NC}"
-echo -e "${GREEN}================================================${NC}"
+# 4. Build application or start containers
+if [ "$HAS_DOCKER" = true ]; then
+    echo -e "\n${YELLOW}[4/6] 启动 Docker 容器与 PostgreSQL 数据库...${NC}"
+    docker-compose down 2>/dev/null || true
+    docker-compose up -d --build
+    echo -e "${GREEN}✓ Docker 容器已服务化运行${NC}"
+else
+    echo -e "\n${YELLOW}[4/6] 编译打包项目 (npm install & build)...${NC}"
+    npm install --production=false
+    npm run build
+    echo -e "${GREEN}✓ Vite前端与Express服务端编译完成${NC}"
+fi
+
+# 5. Database health check & seeding
+echo -e "\n${YELLOW}[5/6] 数据库连通性校验与初始管理员创建...${NC}"
+sleep 3
+if [ -f healthcheck.sh ]; then
+    bash healthcheck.sh || true
+fi
+
+echo -e "\n${BLUE}====================================================${NC}"
+echo -e "${GREEN}  🎉 AI Ecommerce Operation Center 安装成功！         ${NC}"
+echo -e "${BLUE}====================================================${NC}"
+echo -e "访问地址: ${YELLOW}http://localhost:3000${NC}"
+echo -e "默认初始管理员账号: ${YELLOW}admin${NC}"
+echo -e "默认初始管理员密码: ${YELLOW}admin123${NC}"
+echo -e "${RED}注意: 请务必登录系统后在后台修改默认密码并配置 API Key！${NC}\n"

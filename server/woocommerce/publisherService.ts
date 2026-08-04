@@ -454,7 +454,11 @@ export async function createProduct(
     throw new Error(`商品创建中断，图片预处理失败: ${imgErr.message}`);
   }
 
-  const generatedSku = productData.sku || ("SKU-WC-" + Math.floor(100000 + Math.random() * 900000));
+  const generatedSku = productData.sku || ("AIECOM-CAT-" + Math.floor(100000 + Math.random() * 900000));
+  const regularPrice = String(productData.regular_price || productData.regularPrice || productData.price || "129.00");
+  const salePrice = productData.sale_price ? String(productData.sale_price) : (productData.promoPrice ? String(productData.promoPrice) : undefined);
+  const manageStock = productData.manage_stock !== undefined ? Boolean(productData.manage_stock) : true;
+  const stockQuantity = productData.stock_quantity !== undefined ? Number(productData.stock_quantity) : (productData.stock !== undefined ? Number(productData.stock) : Math.floor(50 + Math.random() * 151));
 
   const payload = {
     name: productData.title || productData.name || "AI 智能商品",
@@ -463,11 +467,11 @@ export async function createProduct(
     status: publishMode,
     description: productData.longDescription || productData.ai_description || productData.description || "",
     short_description: productData.shortDescription || productData.ai_short_description || productData.short_description || "",
-    regular_price: String(productData.price || productData.regular_price || "129.00"),
-    sale_price: productData.promoPrice ? String(productData.promoPrice) : (productData.sale_price ? String(productData.sale_price) : undefined),
+    regular_price: regularPrice,
+    sale_price: salePrice,
     sku: generatedSku,
-    manage_stock: true,
-    stock_quantity: productData.stock || 200,
+    manage_stock: manageStock,
+    stock_quantity: stockQuantity,
     weight: String(productData.weight || "0.35"),
     categories: categoriesPayload,
     tags: tagsPayload,

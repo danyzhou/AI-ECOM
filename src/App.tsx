@@ -15,7 +15,7 @@ import { WordPressStoresView } from './views/WordPressStoresView';
 
 import { Product, WooCommerceConfig, AISettingConfig, AITask, UserRole } from './types';
 import { INITIAL_MOCK_PRODUCTS } from './data/mockProducts';
-import { fetchAITasks, fetchSystemSettings, getSessionMe, logoutUser } from './services/api';
+import { fetchAITasks, fetchSystemSettings, fetchProducts, deleteProduct, getSessionMe, logoutUser } from './services/api';
 
 export default function App() {
   // Authentication State (defaults to checking session)
@@ -85,6 +85,10 @@ export default function App() {
   // Load backend task queue & settings when user is authenticated
   const loadBackendData = async () => {
     try {
+      const prodRes = await fetchProducts();
+      if (prodRes?.products && Array.isArray(prodRes.products) && prodRes.products.length > 0) {
+        setProducts(prodRes.products);
+      }
       const taskData = await fetchAITasks();
       if (taskData?.tasks) {
         setTasks(taskData.tasks);
@@ -132,9 +136,14 @@ export default function App() {
     setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     if (confirm('确定要删除该商品吗？')) {
-      setProducts(prev => prev.filter(p => p.id !== productId));
+      try {
+        await deleteProduct(productId);
+        setProducts(prev => prev.filter(p => p.id !== productId));
+      } catch (err: any) {
+        alert(err.message || '删除商品失败，请稍后再试');
+      }
     }
   };
 

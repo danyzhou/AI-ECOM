@@ -18,19 +18,27 @@ import {
   HelpCircle,
   Check,
   X,
-  FileText
+  FileText,
+  User,
+  Lock,
+  Link,
+  Server
 } from 'lucide-react';
 import { AISettingConfig, WooCommerceConfig, SKUConfig } from '../types';
 import { DATABASE_SCHEMA_SQL } from '../data/schema';
 import { 
   fetchAISettings, 
   saveAISettings, 
-  testGeminiConnection,
   testAIProviderConnection,
   fetchSKUConfig,
   saveSKUConfig,
   fetchSystemLogs,
-  clearSystemLogs
+  clearSystemLogs,
+  updateAdminAccount,
+  getCustomDomain,
+  saveCustomDomain,
+  testDbConnection,
+  saveDbConfig
 } from '../services/api';
 
 const CUSTOM_PRESET_MODELS = [
@@ -116,6 +124,149 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Test Connection States
   const [testingGemini, setTestingGemini] = useState(false);
   const [geminiTestResult, setGeminiTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
+
+  // Admin Credentials State
+  const [adminUsername, setAdminUsername] = useState('admin');
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [adminPasswordConfirm, setAdminPasswordConfirm] = useState('');
+  const [updatingAdmin, setUpdatingAdmin] = useState(false);
+  const [adminResult, setAdminResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Custom Domain State
+  const [customDomainInput, setCustomDomainInput] = useState('');
+  const [savingDomain, setSavingDomain] = useState(false);
+  const [domainResult, setDomainResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Database Connection Panel State
+  const [dbType, setDbType] = useState<'postgresql' | 'mysql' | 'sqlite' | 'mongodb'>('postgresql');
+  const [dbHost, setDbHost] = useState('localhost');
+  const [dbPort, setDbPort] = useState('5432');
+  const [dbName, setDbName] = useState('ecom_ai_db');
+  const [dbUser, setDbUser] = useState('postgres');
+  const [dbPassword, setDbPassword] = useState('');
+  const [testingDb, setTestingDb] = useState(false);
+  const [savingDb, setSavingDb] = useState(false);
+  const [dbTestResult, setDbTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+
+  // Password Strength Estimator
+  const getPasswordStrength = (pass: string): { label: string; color: string; percent: number } => {
+    if (!pass) return { label: '未输入', color: 'bg-slate-800 text-slate-400 border-slate-700', percent: 0 };
+    if (pass.length < 6) return { label: '弱 (长度需 ≥ 6)', color: 'bg-rose-950/80 text-rose-300 border-rose-800', percent: 25 };
+    const hasLetters = /[a-zA-Z]/.test(pass);
+    const hasNumbers = /[0-9]/.test(pass);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(pass);
+    if (pass.length >= 10 && hasLetters && hasNumbers && hasSpecial) {
+      return { label: '强 (高强度防护)', color: 'bg-emerald-950/80 text-emerald-300 border-emerald-800', percent: 100 };
+    }
+    if (pass.length >= 6 && (hasLetters || hasNumbers)) {
+      return { label: '中 (良好)', color: 'bg-amber-950/80 text-amber-300 border-amber-800', percent: 65 };
+    }
+    return { label: '弱', color: 'bg-rose-950/80 text-rose-300 border-rose-800', percent: 40 };
+  };
+
+  const handleUpdateAdminAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminNewPassword && adminNewPassword !== adminPasswordConfirm) {
+      setAdminResult({ success: false, message: '两次输入的确认新密码不匹配！' });
+      return;
+    }
+    if (adminNewPassword && adminNewPassword.length < 6) {
+      setAdminResult({ success: false, message: '新密码长度必须在 6 位及以上！' });
+      return;
+    }
+    setUpdatingAdmin(true);
+    setAdminResult(null);
+    try {
+      const res = await updateAdminAccount({
+        newUsername: adminUsername,
+        newPassword: adminNewPassword || undefined,
+      });
+      setAdminResult({
+        success: true,
+        message: res.message || '管理员凭证已成功同步保存至数据库！'
+      });
+      setAdminNewPassword('');
+      setAdminPasswordConfirm('');
+    } catch (err: any) {
+      setAdminResult({ success: false, message: err.message || '更新管理员凭证失败' });
+    } finally {
+      setUpdatingAdmin(false);
+    }
+  };
+
+  const handleSaveDomain = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customDomainInput.trim()) {
+      setDomainResult({ success: false, message: '域名不能为空！' });
+      return;
+    }
+    setSavingDomain(true);
+    setDomainResult(null);
+    try {
+      const res = await saveCustomDomain(customDomainInput.trim());
+      setDomainResult({
+        success: true,
+        message: res.message || '自定义域名设置已成功保存至数据库！'
+      });
+    } catch (err: any) {
+      setDomainResult({ success: false, message: err.message || '保存自定义域名失败' });
+    } finally {
+      setSavingDomain(false);
+    }
+  };
+
+  const handleTestDbConnection = async () => {
+    setTestingDb(true);
+    setDbTestResult(null);
+    try {
+      const res = await testDbConnection({
+        host: dbHost,
+        port: Number(dbPort) || 5432,
+        database: dbName,
+        user: dbUser,
+        password: dbPassword,
+        dbType
+      });
+      setDbTestResult({
+        success: res.success !== false,
+        message: res.message || '数据库连通测试成功！',
+        latencyMs: res.latencyMs
+      });
+    } catch (err: any) {
+      setDbTestResult({
+        success: false,
+        message: err.message || '测试数据库连通失败'
+      });
+    } finally {
+      setTestingDb(false);
+    }
+  };
+
+  const handleSaveDbConfig = async () => {
+    setSavingDb(true);
+    setDbTestResult(null);
+    try {
+      const res = await saveDbConfig({
+        host: dbHost,
+        port: Number(dbPort) || 5432,
+        database: dbName,
+        user: dbUser,
+        password: dbPassword,
+        dbType
+      });
+      setDbTestResult({
+        success: true,
+        message: res.message || '数据库配置已成功保存！'
+      });
+    } catch (err: any) {
+      setDbTestResult({
+        success: false,
+        message: err.message || '保存数据库配置失败'
+      });
+    } finally {
+      setSavingDb(false);
+    }
+  };
 
   const loadLogs = async () => {
     setLoadingLogs(true);
@@ -424,7 +575,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <Database className="w-4 h-4" />
-          <span>数据库 Schema 设计</span>
+          <span>数据库与系统配置</span>
         </button>
 
         <button
@@ -1119,19 +1270,288 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Tab 3: Database Schema */}
+      {/* Tab 3: Database & System Settings */}
       {activeTab === 'db' && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-            <div className="flex items-center space-x-2">
-              <Database className="w-4 h-4 text-cyan-400" />
-              <h3 className="font-semibold text-white text-sm">SQLite / PostgreSQL DDL 数据库表结构设计</h3>
+        <div className="space-y-6">
+          {/* Section A: Admin Account Management */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                  <User className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">管理员账户与凭证管理 (Admin Credentials)</h3>
+                  <p className="text-[10px] text-slate-400">修改管理员用户名与登录密码，更新后同步写入数据库并失效旧 JWT Token</p>
+                </div>
+              </div>
             </div>
-            <span className="text-xs font-mono text-slate-400">7 核心数据表</span>
+
+            <form onSubmit={handleUpdateAdminAccount} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">管理员用户名 (Username)</label>
+                  <input
+                    type="text"
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">新密码 (New Password)</label>
+                  <input
+                    type="password"
+                    value={adminNewPassword}
+                    onChange={(e) => setAdminNewPassword(e.target.value)}
+                    placeholder="不修改请留空 (至少6位)"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                  {adminNewPassword && (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="text-slate-400">密码强度:</span>
+                        <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${getPasswordStrength(adminNewPassword).color}`}>
+                          {getPasswordStrength(adminNewPassword).label}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            getPasswordStrength(adminNewPassword).percent >= 100
+                              ? 'bg-emerald-400'
+                              : getPasswordStrength(adminNewPassword).percent >= 60
+                              ? 'bg-amber-400'
+                              : 'bg-rose-400'
+                          }`}
+                          style={{ width: `${getPasswordStrength(adminNewPassword).percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">确认新密码 (Confirm Password)</label>
+                  <input
+                    type="password"
+                    value={adminPasswordConfirm}
+                    onChange={(e) => setAdminPasswordConfirm(e.target.value)}
+                    placeholder="再次输入新密码"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {adminResult && (
+                <div className={`p-3 rounded-xl border text-xs flex items-center space-x-2 ${
+                  adminResult.success ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border-rose-800 text-rose-300'
+                }`}>
+                  {adminResult.success ? <Check className="w-4 h-4 shrink-0 text-emerald-400" /> : <X className="w-4 h-4 shrink-0 text-rose-400" />}
+                  <span>{adminResult.message}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={updatingAdmin}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl shadow-lg transition flex items-center space-x-2 disabled:opacity-50"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>{updatingAdmin ? '提交更新中...' : '更新管理员账号与密码'}</span>
+                </button>
+              </div>
+            </form>
           </div>
 
-          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 h-96 overflow-y-auto">
-            <pre>{DATABASE_SCHEMA_SQL}</pre>
+          {/* Section B: Custom Domain Binding */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/20 rounded-xl">
+                  <Link className="w-5 h-5 text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">绑定自定义系统域名 (Custom System Domain)</h3>
+                  <p className="text-[10px] text-slate-400">配置绑定内部或外部公开访问域名，系统生成媒体 Hook、图片资源 URL 时自动关联</p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveDomain} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-medium mb-1.5">自定义系统域名与 HTTP URL (System Base Domain)</label>
+                <input
+                  type="text"
+                  value={customDomainInput}
+                  onChange={(e) => setCustomDomainInput(e.target.value)}
+                  placeholder="https://ecom-ai.yourcompany.com"
+                  className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              {domainResult && (
+                <div className={`p-3 rounded-xl border text-xs flex items-center space-x-2 ${
+                  domainResult.success ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border-rose-800 text-rose-300'
+                }`}>
+                  {domainResult.success ? <Check className="w-4 h-4 shrink-0 text-emerald-400" /> : <X className="w-4 h-4 shrink-0 text-rose-400" />}
+                  <span>{domainResult.message}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={savingDomain}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl shadow-lg transition flex items-center space-x-2 disabled:opacity-50"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>{savingDomain ? '保存中...' : '保存自定义域名'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Section C: Database Connectivity Panel */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                  <Server className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm">数据库连接配置与连通测试 (Database Connectivity)</h3>
+                  <p className="text-[10px] text-slate-400">支持配置 MySQL / PostgreSQL / SQLite / MongoDB 后端数据库与测试连通性</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">数据库类型 (DB Engine)</label>
+                  <select
+                    value={dbType}
+                    onChange={(e) => setDbType(e.target.value as any)}
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="postgresql">PostgreSQL (推荐)</option>
+                    <option value="mysql">MySQL 8.0+</option>
+                    <option value="sqlite">SQLite3 (嵌入式轻量文件库)</option>
+                    <option value="mongodb">MongoDB (文档型数据库)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">主机地址 (Database Host)</label>
+                  <input
+                    type="text"
+                    value={dbHost}
+                    onChange={(e) => setDbHost(e.target.value)}
+                    placeholder="localhost 或 127.0.0.1"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">服务端口 (Port)</label>
+                  <input
+                    type="number"
+                    value={dbPort}
+                    onChange={(e) => setDbPort(e.target.value)}
+                    placeholder="5432 / 3306"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">数据库名 (Database Name)</label>
+                  <input
+                    type="text"
+                    value={dbName}
+                    onChange={(e) => setDbName(e.target.value)}
+                    placeholder="ecom_ai_db"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">数据库用户名 (User)</label>
+                  <input
+                    type="text"
+                    value={dbUser}
+                    onChange={(e) => setDbUser(e.target.value)}
+                    placeholder="postgres / root"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1.5">密码 (Password)</label>
+                  <input
+                    type="password"
+                    value={dbPassword}
+                    onChange={(e) => setDbPassword(e.target.value)}
+                    placeholder="数据库访问密码"
+                    className="w-full px-3 py-2.5 bg-slate-950 text-white border border-slate-800 rounded-xl font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {dbTestResult && (
+                <div className={`p-3.5 rounded-xl border text-xs space-y-1 ${
+                  dbTestResult.success ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border-rose-800 text-rose-300'
+                }`}>
+                  <div className="flex items-center space-x-2 font-medium">
+                    {dbTestResult.success ? <Check className="w-4 h-4 shrink-0 text-emerald-400" /> : <X className="w-4 h-4 shrink-0 text-rose-400" />}
+                    <span>{dbTestResult.message}</span>
+                  </div>
+                  {dbTestResult.latencyMs !== undefined && (
+                    <p className="text-[10px] text-emerald-400/80 font-mono pl-6">数据库建立 TCP 连接延迟: {dbTestResult.latencyMs}ms</p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestDbConnection}
+                  disabled={testingDb}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl transition flex items-center space-x-2 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${testingDb ? 'animate-spin' : ''}`} />
+                  <span>{testingDb ? '测试连通中...' : '测试数据库连通性'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveDbConfig}
+                  disabled={savingDb}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl shadow-lg transition flex items-center space-x-2 disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{savingDb ? '保存配置中...' : '保存数据库配置'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Section D: Database Schema DDL */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center space-x-2">
+                <Database className="w-4 h-4 text-cyan-400" />
+                <h3 className="font-semibold text-white text-sm">SQLite / PostgreSQL DDL 数据库表结构设计</h3>
+              </div>
+              <span className="text-xs font-mono text-slate-400">7 核心数据表</span>
+            </div>
+
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 font-mono text-[11px] text-cyan-300 h-80 overflow-y-auto">
+              <pre>{DATABASE_SCHEMA_SQL}</pre>
+            </div>
           </div>
         </div>
       )}
