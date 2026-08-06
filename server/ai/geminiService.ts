@@ -339,7 +339,7 @@ export async function callOpenAICompatibleAPI(input: {
     payload.response_format = { type: 'json_object' };
   }
 
-  const maxAttempts = 2; // Attempt 1 + 1 Retry on 502/504/Network
+  const maxAttempts = 3; // Attempt 1 + 2 Retries on 502/504/Timeout/Network
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -353,7 +353,7 @@ export async function callOpenAICompatibleAPI(input: {
           'Authorization': authHeaderValue
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(90000) // 90 Seconds Timeout
+        signal: AbortSignal.timeout(120000) // 120 Seconds Timeout (120,000 ms)
       });
 
       if (!res.ok) {
@@ -381,8 +381,8 @@ export async function callOpenAICompatibleAPI(input: {
         const isRetryableStatus = res.status === 502 || res.status === 503 || res.status === 504 || res.status === 520 || res.status === 524;
 
         if (isRetryableStatus && attempt < maxAttempts) {
-          console.warn(`[AI Proxy Server HTTP ${res.status}] 遇到中转站 502/504 响应，将在 2 秒后携带完整 Auth Header 自动重试...`);
-          await new Promise(r => setTimeout(r, 2000));
+          console.warn(`[AI Proxy Server HTTP ${res.status}] 遇到中转站 HTTP ${res.status} 响应，将在 3 秒后尝试第 ${attempt + 1}/${maxAttempts} 次自动重试...`);
+          await new Promise(r => setTimeout(r, 3000));
           continue;
         }
 
@@ -393,6 +393,8 @@ export async function callOpenAICompatibleAPI(input: {
         else if (res.status === 403) hint = ' - 拒绝访问 / 权限不足';
         else if (res.status === 404) hint = ' - 404 Endpoint 路径或模型不存在';
         else if (res.status === 429) hint = ' - 429 请求频率超限';
+        else if (res.status === 502) hint = ' - 502 Bad Gateway 网关错误';
+        else if (res.status === 504) hint = ' - 504 Gateway Timeout 网关响应超时';
         else if (res.status >= 500) hint = ` - 中转站服务器内部错误 (HTTP ${res.status})`;
 
         const detailedErrorMsg = `[AI 节点响应错误 HTTP ${res.status}${hint}] Endpoint: ${endpoint} | 明细: ${truncatedDetail}`;

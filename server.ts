@@ -1784,7 +1784,7 @@ app.get("/api/system/init", handleSystemInit);
 
 // Full Pipeline Automation Runner (Real APIs: Gemini Vision -> Gemini Content -> WooCommerce)
 app.post("/api/workflow/run-pipeline", async (req, res) => {
-  const { imageUrl, imageBase64, userNotes, costPrice, language = "zh-CN", autoPublish = false, storeId } = req.body;
+  const { imageUrl, imageBase64, userNotes, costPrice, language = "zh-CN", autoPublish = false, storeId, skuPrefix, regularPrice, salePrice, stockQuantity } = req.body;
   const isAutoPublish = autoPublish === true || autoPublish === "true";
 
   const rawSourceImage = imageUrl || imageBase64;
@@ -1859,13 +1859,39 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
       language
     });
 
-    const finalSku = generatedProductData.sku || autoSku;
-    log(`[Step 2: AI 智能 成功] 生成标题: "${generatedProductData.title}", SKU: ${finalSku}`);
+    let customSku = "";
+    if (skuPrefix && typeof skuPrefix === "string" && skuPrefix.trim() !== "") {
+      const prefixClean = skuPrefix.trim();
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      customSku = prefixClean.endsWith("-") ? `${prefixClean}${randomSuffix}` : `${prefixClean}-${randomSuffix}`;
+    }
+    const finalSku = customSku || generatedProductData.sku || autoSku;
+
+    const finalRegularPrice = (regularPrice !== undefined && regularPrice !== null && regularPrice !== "")
+      ? String(regularPrice)
+      : (generatedProductData.regular_price || String(generatedProductData.price || "49.99"));
+
+    const finalSalePrice = (salePrice !== undefined && salePrice !== null && salePrice !== "")
+      ? String(salePrice)
+      : (generatedProductData.sale_price || (generatedProductData.promoPrice ? String(generatedProductData.promoPrice) : undefined));
+
+    const finalStockQty = (stockQuantity !== undefined && stockQuantity !== null && stockQuantity !== "")
+      ? Number(stockQuantity)
+      : (generatedProductData.stock_quantity || generatedProductData.stock || 100);
+
+    log(`[Step 2: AI 智能 成功] 生成标题: "${generatedProductData.title}", SKU: ${finalSku}, 价格: $${finalRegularPrice}${finalSalePrice ? ` (促: $${finalSalePrice})` : ''}, 库存: ${finalStockQty}`);
 
     const createdProduct: any = {
       id: initialTask.productId,
       ...generatedProductData,
       sku: finalSku,
+      regular_price: finalRegularPrice,
+      sale_price: finalSalePrice,
+      price: Number(finalRegularPrice) || 49.99,
+      promoPrice: finalSalePrice ? Number(finalSalePrice) : undefined,
+      manage_stock: true,
+      stock_quantity: finalStockQty,
+      stock: finalStockQty,
       mainImage: processedImage,
       optimizedMainImage: processedImage,
       galleryImages: [processedImage],

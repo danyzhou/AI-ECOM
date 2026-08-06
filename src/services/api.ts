@@ -175,6 +175,10 @@ export async function runAIPipeline(payload: {
   imageRatio?: '1:1' | '4:3' | '16:9' | '3:4';
   autoPublish?: boolean;
   storeId?: string;
+  skuPrefix?: string;
+  regularPrice?: number;
+  salePrice?: number;
+  stockQuantity?: number;
 }) {
   const sanitizedPayload = { ...payload };
   const rawImage = sanitizedPayload.imageBase64 || sanitizedPayload.imageUrl;

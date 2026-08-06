@@ -80,6 +80,20 @@ export async function standardizeImageToBase641to1(
 }
 
 /**
+ * Normalizes image URL, stripping hardcoded external domains like ai.zosy.net
+ * so that image tags can load local /uploads/... relative paths seamlessly.
+ */
+export function normalizeImageUrl(url?: string): string {
+  if (!url) return '';
+  if (typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (trimmed.includes('ai.zosy.net')) {
+    return trimmed.replace(/^https?:\/\/ai\.zosy\.net/, '');
+  }
+  return trimmed;
+}
+
+/**
  * Helper to batch standardize an array of image strings
  */
 export async function standardizeImageArray1to1(

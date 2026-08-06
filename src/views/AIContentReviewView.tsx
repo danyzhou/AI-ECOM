@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Product, WooCommerceStore } from '../types';
 import { generateGeminiProductContent, saveProduct, publishToWooCommerce, fetchStores, publishToStoresApi } from '../services/api';
+import { normalizeImageUrl } from '../utils/imageStandardizer';
 
 interface AIContentReviewViewProps {
   products: Product[];
@@ -634,7 +635,7 @@ export const AIContentReviewView: React.FC<AIContentReviewViewProps> = ({
                 <p className="text-[11px] text-slate-400 font-medium">1. 原始长图 / URL</p>
                 <div className="aspect-square bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative group">
                   <img
-                    src={editedProduct.mainImage}
+                    src={normalizeImageUrl(editedProduct.mainImage)}
                     alt="Original Product"
                     className="w-full h-full object-cover"
                   />
@@ -648,7 +649,7 @@ export const AIContentReviewView: React.FC<AIContentReviewViewProps> = ({
                 <p className="text-[11px] text-emerald-400 font-medium">2. AI 优化电商白底图</p>
                 <div className="aspect-square bg-white/95 rounded-xl overflow-hidden border-2 border-emerald-500/40 relative group shadow-md">
                   <img
-                    src={editedProduct.optimizedMainImage || editedProduct.mainImage}
+                    src={normalizeImageUrl(editedProduct.optimizedMainImage || editedProduct.mainImage)}
                     alt="Optimized Product"
                     className="w-full h-full object-contain p-2"
                   />
@@ -663,7 +664,7 @@ export const AIContentReviewView: React.FC<AIContentReviewViewProps> = ({
               <label className="text-[11px] font-medium text-slate-400">更新优化后图片 URL:</label>
               <input
                 type="text"
-                value={editedProduct.optimizedMainImage || editedProduct.mainImage}
+                value={normalizeImageUrl(editedProduct.optimizedMainImage || editedProduct.mainImage)}
                 onChange={(e) => setEditedProduct({ ...editedProduct, optimizedMainImage: e.target.value })}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-300 p-2 focus:outline-none focus:border-indigo-500 font-mono"
               />

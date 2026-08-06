@@ -12,7 +12,8 @@ import {
   Zap, 
   ShieldCheck, 
   ExternalLink, 
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from 'lucide-react';
 import { Product, AITask } from '../types';
 import { runAIPipeline, publishToWooCommerce } from '../services/api';
@@ -47,6 +48,13 @@ export const ProductCreationView: React.FC<ProductCreationViewProps> = ({
   const [imageRatio, setImageRatio] = useState<'1:1' | '4:3' | '16:9' | '3:4'>('1:1');
   const [userNotes, setUserNotes] = useState<string>('');
   const [autoPublish, setAutoPublish] = useState<boolean>(true);
+
+  // Product Initial Attribute Config States
+  const [isAttrPanelOpen, setIsAttrPanelOpen] = useState<boolean>(true);
+  const [skuPrefix, setSkuPrefix] = useState<string>('AIECOM-SKU-');
+  const [regularPrice, setRegularPrice] = useState<string>('49.99');
+  const [salePrice, setSalePrice] = useState<string>('39.99');
+  const [stockQuantity, setStockQuantity] = useState<string>('100');
 
   // Active Pipeline Execution State
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -164,7 +172,11 @@ export const ProductCreationView: React.FC<ProductCreationViewProps> = ({
         image_ratio: imageRatio,
         imageRatio: imageRatio,
         userNotes,
-        autoPublish: autoPublish
+        autoPublish: autoPublish,
+        skuPrefix: skuPrefix.trim() || undefined,
+        regularPrice: regularPrice ? Number(regularPrice) : undefined,
+        salePrice: salePrice ? Number(salePrice) : undefined,
+        stockQuantity: stockQuantity ? Number(stockQuantity) : undefined
       });
 
       clearTimeout(t1);
@@ -555,6 +567,83 @@ export const ProductCreationView: React.FC<ProductCreationViewProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Product Initial Attribute Config Panel */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-3">
+              <button
+                type="button"
+                onClick={() => setIsAttrPanelOpen(!isAttrPanelOpen)}
+                className="w-full flex items-center justify-between text-left text-xs font-bold text-slate-200 hover:text-white transition"
+              >
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-indigo-400">🏷️</span>
+                  <span>商品初始化属性配置</span>
+                  <span className="text-[10px] text-slate-400 font-normal">(SKU、价格、库存)</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isAttrPanelOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isAttrPanelOpen && (
+                <div className="space-y-3 pt-2.5 border-t border-slate-800/80 text-xs">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      SKU 前缀 / 规则
+                    </label>
+                    <input
+                      type="text"
+                      value={skuPrefix}
+                      onChange={(e) => setSkuPrefix(e.target.value)}
+                      placeholder="如: AIECOM-SKU- (默认自动生成随机后缀)"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-0.5">留空则自动生成系统默认随机 SKU</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        常规售价 (Regular Price $)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={regularPrice}
+                        onChange={(e) => setRegularPrice(e.target.value)}
+                        placeholder="49.99"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                        促销价 (Sale Price $) <span className="text-slate-500 font-normal">(可选)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={salePrice}
+                        onChange={(e) => setSalePrice(e.target.value)}
+                        placeholder="39.99"
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-300 mb-1">
+                      初始库存 (Stock Quantity)
+                    </label>
+                    <input
+                      type="number"
+                      value={stockQuantity}
+                      onChange={(e) => setStockQuantity(e.target.value)}
+                      placeholder="100"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* User Notes */}
