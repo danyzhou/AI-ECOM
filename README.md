@@ -17,18 +17,18 @@
 
 ## ⚡ 极速一键部署 (Recommended for VPS)
 
-针对 **Ubuntu 22.04 / 24.04 LTS** 云服务器（VPS），系统提供了一键自动化部署脚本。无需手动预先安装 Docker、Nginx 或配置 SSL，直接以 `root` 权限在 VPS 终端执行以下一键指令即可完成全部配置：
+针对 **Ubuntu 22.04 / 24.04 LTS** 云服务器（VPS），系统提供了一键自动化部署脚本。无需预先安装 Docker、Nginx 或手动配置 SSL，直接以 `root` 身份在终端粘贴执行以下一键命令：
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh
 ```
 
-> **💡 一键部署自动化能力**：
-> 1. **基础依赖**：自动安装并配置 Curl、Git、Docker、Docker Compose、Nginx、UFW、Certbot。
-> 2. **内存保护 (Swap)**：检测并自动创建 **2GB Swap 虚拟内存**（防止小内存 VPS 构建过程因内存溢出而被系统 Kill）。
-> 3. **反向代理 & 防超时**：自动配置 Nginx 代理并将连接与读取超时调至 **600 秒**（防止 AI 美化图片与大语言模型生成长文案时触发 HTTP 502/504）。
-> 4. **数据库 & 账号**：启动 PostgreSQL 数据库，自动执行 Schema Migration 和默认 Admin 账号 Seed。
-> 5. **HTTPS 证书**：自动申请 Let's Encrypt 免费 SSL 证书并配置 HTTP 到 HTTPS 强转与定时续期。
+> **💡 自动化部署特性**：
+> 1. **基础环境**：自动安装 Curl、Git、Docker、Docker Compose、Nginx、UFW 防火墙与 Certbot。
+> 2. **内存保护 (Swap)**：检测并自动创建 **2GB Swap 虚拟内存**（防止小内存 VPS 编译或运行构建时因 OOM 被 Killed）。
+> 3. **反向代理 & 防超时**：自动配置 Nginx 代理并将长连接与读取超时扩展至 **600 秒**（针对 AI 图像处理与大模型生成文案的耗时特性）。
+> 4. **数据库 & 动态账号**：启动 PostgreSQL 容器，自动执行 Schema Migration 以及包含自定义 `ADMIN_USER` / `ADMIN_PASSWORD` 的账号初始化。
+> 5. **HTTPS 证书**：使用 Certbot 自动申请 Let's Encrypt 免费 SSL 证书并开启 HTTP 到 HTTPS 重定向与自动续期。
 
 ---
 
@@ -38,77 +38,64 @@ curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o 
 - [✨ 项目简介与核心痛点](#-项目简介与核心痛点)
 - [🔥 核心功能亮点](#-核心功能亮点)
 - [🛠️ 技术栈](#️-技术栈)
-- [📐 架构与全自动流水线工作流](#-架构与全自动流水线工作流)
+- [📐 架构与全自动流水线](#-架构与全自动流水线)
 - [🚀 部署与开发指南](#-部署与开发指南)
-  - [1. 方案一：一键脚本自动化部署 (推荐)](#1-方案一构建一键脚本自动化部署-推荐)
-  - [2. 方案二：Docker / Docker Compose 手动部署](#2-方案二docker--docker-compose-手动部署)
-  - [3. 方案三：本地 Node.js 开发环境运行](#3-方案三本地-nodejs-开发环境运行)
+  - [1. 一键脚本自动化部署 (推荐)](#1-一键脚本自动化部署-推荐)
+  - [2. Docker / Docker Compose 手动部署](#2-docker--docker-compose-手动部署)
+  - [3. 本地 Node.js 开发环境运行](#3-本地-nodejs-开发环境运行)
   - [4. WooCommerce 独立站 API 绑定与配置](#4-woocommerce-独立站-api-绑定与配置)
 - [⚙️ 环境变量配置 (.env.example)](#️-环境变量配置-envexample)
 - [❓ 常见问题与排错 (FAQ)](#-常见问题与排错-faq)
-- [🤝 贡献指南 (Contributing)](#-贡献指南-contributing)
 - [📜 开源许可证 (License)](#-开源许可证-license)
 
 ---
 
 ## ✨ 项目简介与核心痛点
 
-在跨境电商（如 WooCommerce、Shopify、Amazon）运营与多独立站矩阵铺货模式中，运营团队往往面临以下痛点：
+在跨境电商（如 WooCommerce、Shopify）铺货与多独立站矩阵运营中，团队常面临以下痛点：
+1. **修图极度耗时**：供应商原图带水印、杂物或尺寸比例统一性差。
+2. **多语言 SEO 撰写门槛高**：人工撰写符合 Google 抓取规则的 HTML 结构化多语言描述成本高昂。
+3. **SKU 与价格缺失**：商品发布时常漏填规范 SKU、建议零售价、折后价或库存数量。
+4. **多店铺矩阵重复上架**：缺少全自动一键同步分发机制。
 
-1. **修图效率低，图像无视觉质感**：供应商商品原图含水印、文字杂物、尺寸比例混乱，手动修图极度耗时。
-2. **多语言 SEO 文案撰写成本高**：手动撰写英文、德文、法文等符合 Google SEO 标准的带 HTML 标签排版文案需要大量外语运营人员。
-3. **关键商品属性缺失**：发布至 WooCommerce 站点的商品经常漏填规范 SKU、市场价格（`regular_price`）、促销价（`sale_price`）与库存数量（`stock_quantity`）。
-4. **多店铺刊登重复劳动**：无法实现商品全自动流转以及一键同步分发至多个 WooCommerce 矩阵独立站。
-
-**AI-ECOM** (AI Ecommerce Operation Center) 打造了从 **“原图 AI 视觉识别与抠图美化 → Gemini 2.5 多语言文案生成 & SKU/价格/库存自动定标 → WooCommerce REST API 媒体库与商品矩阵刊登”** 的全自动化流水线。
+**AI-ECOM** 打造了从 **“原图 AI 识别与抠图美化 → Gemini 多语言 SEO 文案生成 & SKU/价格/库存自动定标 → WooCommerce REST API 媒体库与商品矩阵分发”** 的全自动化处理流程。
 
 ---
 
 ## 🔥 核心功能亮点
 
 - 🎨 **AI 图像识别与多比例构图美化**
-  - **视觉识别**：大模型自动解析商品材质、色彩、轮廓与适用场景。
-  - **智能美化构图**：支持 1:1 (正方形)、4:3 (标准)、16:9 (宽屏)、3:4 (电商) 智能构图、抠图去杂物与背景美化。
-  - **WordPress 媒体库无缝绑定**：AI 处理后的图片自动上传至目标独立站媒体库并关联为商品主图。
+  - 自动识别材质、颜色、场景特征。
+  - 支持 1:1 (正方形)、4:3 (标准)、16:9 (宽屏)、3:4 (电商) 智能构图与抠图背景美化。
+  - 自动同步上传至WordPress媒体库并绑定商品主图。
 
-- ✍️ **Gemini 智能文案与 SKU / 价格 / 库存生成**
-  - **结构化 HTML 输出**：自动输出规范包含标题、`<h3>` 结构、`<ul>` / `<li>` 卖点特性的 SEO 描述与摘要。
-  - **自动定标 SKU 与价格**：流转中自动生成唯一 SKU（如 `AIECOM-CAT-XXXX`）、市场零售价、促销折扣价及随机合理库存（50-200件）。
-  - **多语言适配**：一键切换英语、德语、法语、西班牙语、日语等多国语言。
+- ✍️ **Gemini 智能文案与 SKU / 价格 / 库存定标**
+  - 自动输出结构化 HTML 描述（含 `<h3>`、`<ul>`、`<li>` 排版）。
+  - 自动生成规范 SKU（如 `AIECOM-CAT-XXXX`）、市场价、折后价与合理库存。
+  - 支持英语、德语、法语、西班牙语、日语等多国语言。
 
-- 🏬 **WooCommerce 独立站矩阵管理与自动刊登**
-  - 支持多店铺 REST API 状态健康度检测与集中管理。
-  - 自动获取并同步目标店铺的分类（Categories）与标签（Tags）。
-  - 支持“保存草稿 (Draft)”与“一键发布 (Publish)”双模式批量上架。
+- 🏬 **WooCommerce 独立站矩阵一键刊登**
+  - 实时检测多个独立站 API 健康度。
+  - 动态同步目标店铺分类（Categories）与标签（Tags）。
+  - 支持“保存草稿 (Draft)”与“一键发布 (Publish)”双模式上架。
 
-- 📊 **可视化数据大盘与持久化存储**
-  - 实时统计商品总量、待上架商品数、任务流进度与成功率。
-  - 支持 PostgreSQL 与 JSON 本地存储引擎，服务端物理持久化，彻底解决删除/更新后刷新页面重现的 Bug。
+- 📊 **可视化大盘与数据持久化**
+  - 实时统计商品数、待审任务及刊登成功率。
+  - 支持 PostgreSQL 与磁盘物理持久化，确保数据删除/修改刷新页面不丢失。
 
 ---
 
 ## 🛠️ 技术栈
 
-### 前端 (Frontend)
-- **核心框架**：React 18 + Vite + TypeScript
-- ** UI & 样式**：Tailwind CSS + Lucide React 图标库
-- **可视化图表**：Recharts
-- **平滑动画**：Framer Motion
-
-### 后端 (Backend)
-- **运行环境**：Node.js 18+ / 20+
-- **Web 服务**：Express.js + TypeScript (`tsx` 开发，`esbuild` 编译 bundling)
-- **AI 智能服务**：
-  - `@google/genai` (Google Gemini 2.5/1.5 Flash 大语言模型)
-  - OpenAI Vision / Image API (辅助图像抠图美化)
-- **电商接口**：WooCommerce REST API (`@woocommerce/woocommerce-rest-api` / Axios)
-
-### 数据库与持久化 (Storage)
-- **数据库**：PostgreSQL / 文件持久化引擎 (`data_db/products.json`, `data_db/stores.json`, `data_db/tasks.json`)
+- **前端**：React 18 + Vite + TypeScript + Tailwind CSS + Lucide Icons + Recharts + Framer Motion
+- **后端**：Node.js + Express.js + TypeScript (`tsx` 开发, `esbuild` 生产编译)
+- **AI 服务**：`@google/genai` (Google Gemini 2.5/1.5 Flash) + OpenAI Vision
+- **电商 API**：WooCommerce REST API (`@woocommerce/woocommerce-rest-api`)
+- **存储**：PostgreSQL (Drizzle/Pool) / 磁盘物理 JSON 双引擎
 
 ---
 
-## 📐 架构与全自动流水线工作流
+## 📐 架构与全自动流水线
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -137,80 +124,52 @@ curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o 
 
 ## 🚀 部署与开发指南
 
-### 1. 方案一：一键脚本自动化部署 (推荐)
+### 1. 一键脚本自动化部署 (推荐)
 
-在干净的 **Ubuntu 22.04 / 24.04 LTS VPS** 终端中，直接复制运行：
+在干净的 **Ubuntu 22.04 / 24.04 LTS VPS** 终端中运行：
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh
 ```
 
-**命令行交互填空提示**：
-- **自定义域名**：例如 `ecom.yourdomain.com`（须提前在 DNS 中解析到服务器公网 IP）。
-- **SSL 邮箱**：接收 Let's Encrypt 证书到期通知。
-- **PostgreSQL 账号密码**与 **系统 Admin 登录凭证**。
+**交互提示填写**：
+- 输入绑定域名（如 `ecom.yourdomain.com`，需事先解析到 VPS IP）。
+- 输入用于接收 SSL 证书提醒的邮箱。
+- 设置数据库与管理员 Username/Password（系统初始化将自动应用自定义管理员凭证）。
 
 ---
 
-### 2. 方案二：Docker / Docker Compose 手动部署
-
-若本地已有 Docker 环境，可以通过 Compose 一键构建启动：
+### 2. Docker / Docker Compose 手动部署
 
 ```bash
-# 1. 克隆项目仓库
 git clone https://github.com/danyzhou/AI-ECOM.git /opt/AI-ECOM
 cd /opt/AI-ECOM
-
-# 2. 复制并配置 .env 文件
 cp .env.example .env
-nano .env   # 填入 GEMINI_API_KEY 与 数据库凭证
-
-# 3. 启动容器
+# 编辑 .env 配置 GEMINI_API_KEY 与 ADMIN_USER / ADMIN_PASSWORD
 docker compose up -d --build
 ```
 
 ---
 
-### 3. 方案三：本地 Node.js 开发环境运行
+### 3. 本地 Node.js 开发环境运行
 
-#### 1) 克隆项目与安装依赖
 ```bash
 git clone https://github.com/danyzhou/AI-ECOM.git
 cd AI-ECOM
 npm install
-```
-
-#### 2) 配置 `.env` 文件
-```bash
 cp .env.example .env
-```
-在 `.env` 中指定 API 密钥：
-```env
-PORT=3000
-NODE_ENV=development
-GEMINI_API_KEY=your_google_gemini_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-#### 3) 启动开发服务
-```bash
+# 填写 GEMINI_API_KEY
 npm run dev
 ```
-启动成功后，访问 `http://localhost:3000` 即可进入系统。
+启动后访问：`http://localhost:3000`
 
 ---
 
 ### 4. WooCommerce 独立站 API 绑定与配置
 
-1. **登录 WordPress 后台**：进入 **WooCommerce -> 设置 (Settings) -> 高级 (Advanced) -> REST API**。
-2. **生成 API 密钥**：
-   - 点击 **添加密钥 (Add Key)**。
-   - 描述填写：`AI-ECOM Operation Center`。
-   - **权限 (Permissions)** 必须设置为：**读写 (Read/Write)**。
-   - 点击 **生成 API 密钥**，保存生成的 `Consumer Key` (`ck_...`) 和 `Consumer Secret` (`cs_...`)。
-3. **系统录入**：
-   - 在 AI-ECOM 前端进入 **店铺管理 (Store Management)** 界面。
-   - 点击 **添加店铺**，填入你的站点 URL、`Consumer Key` 与 `Consumer Secret` 并点击测试连通性。
+1. 登录 WordPress 后台：进入 **WooCommerce -> 设置 -> 高级 -> REST API**。
+2. 添加 API 密钥，描述填写 `AI-ECOM`，权限选择 **读写 (Read/Write)**。
+3. 在系统 **店铺管理** 界面录入 URL、`Consumer Key` 与 `Consumer Secret`。
 
 ---
 
@@ -218,47 +177,25 @@ npm run dev
 
 | 环境变量 Key | 是否必填 | 默认值 | 作用描述 (Description) |
 | --- | --- | --- | --- |
-| `PORT` | 否 | `3000` | 后端 Express 服务器监听端口 |
-| `NODE_ENV` | 否 | `development` | 运行模式 (`development` / `production`) |
-| `GEMINI_API_KEY` | **是** | - | Google Gemini API Key (用于商品视觉解析与 SEO 文案生成) |
-| `OPENAI_API_KEY` | 否 | - | OpenAI API Key (用于 AI 图像美化与抠图) |
-| `DATABASE_URL` | 否 | - | PostgreSQL 数据库连接串（未配置时默认自动切换为持久化 JSON 存储） |
+| `PORT` | 否 | `3000` | 服务端口 |
+| `NODE_ENV` | 否 | `development` | 运行环境模式 (`development` / `production`) |
+| `GEMINI_API_KEY` | **是** | - | Google Gemini API Key |
+| `ADMIN_USER` | 否 | `admin` | 初始化系统管理员用户名 |
+| `ADMIN_PASSWORD` | 否 | `admin123` | 初始化系统管理员密码 |
+| `DATABASE_URL` | 否 | - | PostgreSQL 数据库串（未配置时降级为 JSON 物理库） |
 
 ---
 
 ## ❓ 常见问题与排错 (FAQ)
 
-### Q1: 发布商品至 WooCommerce 时提示 `401 Unauthorized` 或 `404 Not Found`？
-> **原因与解答**：
-> 1. 请检查所填 Key 的权限是否为 **Read/Write (读写)**。
-> 2. WordPress 站点必须开启 HTTPS 并启用固定链接（Permalink设置不能为“常规”，须选择“文章名”或“Custom Structure”）。
+### Q1: 部署时自定义设置的管理员账号登录提示不匹配？
+> 已完全修复。`install.sh` 脚本录入的 `ADMIN_USER` 与 `ADMIN_PASSWORD` 会自动被 `npm run db:seed` 提取并对密码加密写入数据库，支持直接使用自定义账号登录。
 
-### Q2: 批量发布或生成时，Nginx 报 HTTP 502 / 504 Gateway Timeout？
-> **原因与解答**：
-> 大模型生成多语言长文案或高精度图像处理可能耗时 30-90 秒。请确保 Nginx 配置文件中的 `proxy_read_timeout` 与 `proxy_send_timeout` 均已调大至 `600s`（一键部署脚本已自动处理）。
-
-### Q3: 为什么删除商品或更新数据后，刷新页面数据不会丢失？
-> **原因与解答**：
-> 本系统已完美修补底层数据流。无论是调用 `DELETE /api/products/:id` 还是更新商品，请求均会实时持久化写入 PostgreSQL 数据库或服务端 `data_db/products.json` 磁盘物理库中，刷新页面数据始终保持最新。
-
----
-
-## 🤝 贡献指南 (Contributing)
-
-非常欢迎提交 Issue 或 Pull Request！
-
-```bash
-# 提交代码前请执行代码格式与 Lint 校验
-npm run lint
-npm run build
-```
+### Q2: 批量处理图片或生成文案时报 502/504 Gateway Timeout？
+> 一键部署脚本已在 Nginx 中将 `proxy_read_timeout` 与 `proxy_send_timeout` 扩展至 `600s`，确保大模型耗时生成任务平滑进行。
 
 ---
 
 ## 📜 开源许可证 (License)
 
-本项目遵循 [MIT License](LICENSE) 协议开源。
-
-<p align="center">
-  Made with ❤️ by AI Ecommerce Team
-</p>
+本项目遵循 [MIT License](LICENSE) 开源。

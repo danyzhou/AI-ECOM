@@ -1,8 +1,0 @@
-{
-  "name": "AI ECOM PRODUCT ASSISTANT",
-  "description": "Enterprise AI-powered E-commerce operations dashboard for automated product optimization, content generation, image editing, and WooCommerce sync.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
