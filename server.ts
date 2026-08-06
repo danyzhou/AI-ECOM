@@ -86,6 +86,7 @@ if (!fs.existsSync(UPLOADS_TEMP_DIR)) {
   fs.mkdirSync(UPLOADS_TEMP_DIR, { recursive: true });
 }
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
+app.use("/uploads", express.static(path.join(process.cwd(), "dist", "uploads")));
 
 // ----------------------------------------------------
 // Password Encryption & Security Utilities (PBKDF2)

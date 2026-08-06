@@ -690,8 +690,16 @@ Return ONLY a raw valid JSON object without markdown formatting or code blocks:
           jsonMode: true
         });
       } else {
-        // Re-throw 404, 429, 401 or network errors directly to halt the pipeline and prevent false success
-        throw apiErr;
+        console.warn(`[${provider.toUpperCase()} 视觉识别节点降级] 节点 [${model}] 响应报错 (${errStr})，自动容错降级回退使用 Gemini 节点 (gemini-2.0-flash)...`);
+        try {
+          const slimImg = ensureSlimImageInput(imageInput);
+          return await analyzeProductImageWithGemini(slimImg, {
+            apiKey: process.env.GEMINI_API_KEY || (config?.apiKey ? config.apiKey : ''),
+            model: 'gemini-2.0-flash'
+          });
+        } catch (fbErr: any) {
+          throw new Error(`[视觉分析节点异常 (${provider}/${model})] ${errStr} | 自动降级 Gemini 亦失败: ${fbErr?.message || String(fbErr)}`);
+        }
       }
     }
 
@@ -817,16 +825,36 @@ Respond ONLY with a valid JSON object matching this schema:
   }
 }`;
 
-  const reply = await callOpenAICompatibleAPI({
-    baseUrl,
-    apiKey,
-    model,
-    messages: [
-      { role: 'system', content: 'You are a professional e-commerce product copywriter for Spanish markets. Output valid JSON only.' },
-      { role: 'user', content: prompt }
-    ],
-    jsonMode: true
-  });
+  let reply: string;
+  try {
+    reply = await callOpenAICompatibleAPI({
+      baseUrl,
+      apiKey,
+      model,
+      messages: [
+        { role: 'system', content: 'You are a professional e-commerce product copywriter for Spanish markets. Output valid JSON only.' },
+        { role: 'user', content: prompt }
+      ],
+      jsonMode: true
+    });
+  } catch (apiErr: any) {
+    const errorMsg = apiErr?.message || String(apiErr);
+    console.error(`[STEP 3 AI Copy Generation Error (${provider}/${model})]: ${errorMsg}`);
+
+    console.warn(`[STEP 3 容错自动降级] 检测到 AI 节点 (${provider}/${model}) 响应失败或模型无效 [${errorMsg}]，自动降级切换至默认 Gemini 节点 (gemini-2.0-flash / gpt-4o-mini)...`);
+
+    try {
+      const fallbackResult = await generateProductContentWithGemini(input, {
+        apiKey: process.env.GEMINI_API_KEY || (config?.apiKey ? config.apiKey : ''),
+        model: 'gemini-2.0-flash'
+      });
+      console.log(`[STEP 3 降级成功] 成功回退至 Gemini 节点 (gemini-2.0-flash) 生成文案: "${fallbackResult.title}"`);
+      return fallbackResult;
+    } catch (fallbackErr: any) {
+      const fbMsg = fallbackErr?.message || String(fallbackErr);
+      throw new Error(`[STEP 3 核心 AI 节点报错 (${provider}/${model})] ${errorMsg} | 自动容错降级回退 Gemini 亦失败: ${fbMsg}`);
+    }
+  }
 
   const parsed: any = extractAndParseJSON(reply, {});
   const esTitle = parsed.title || visionContext?.name || 'Producto Inteligente de Alta Calidad Pro';
