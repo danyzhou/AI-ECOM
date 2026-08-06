@@ -506,17 +506,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </p>
         </div>
 
-        {activeTab === 'ai' && (
-          <button
-            onClick={handleSaveAISettings}
-            disabled={saving}
-            className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-semibold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center space-x-2 transition shrink-0 disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            <span>{saving ? '保存中...' : '保存 AI API 设置'}</span>
-          </button>
-        )}
-
         {activeTab === 'sku' && (
           <button
             onClick={handleSaveSKUSettings}

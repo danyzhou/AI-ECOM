@@ -23,8 +23,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   
   // Login State
-  const [loginUsername, setLoginUsername] = useState('admin');
-  const [loginPassword, setLoginPassword] = useState('admin123');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
 
   // Register State
@@ -106,12 +106,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const setQuickAccount = (user: string, pass: string) => {
-    setActiveTab('login');
-    setLoginUsername(user);
-    setLoginPassword(pass);
   };
 
   return (
@@ -445,29 +439,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               </button>
             </form>
           )}
-
-          {/* Quick Login Presets for Easy Demoing */}
-          <div className="mt-6 pt-5 border-t border-slate-800/80">
-            <p className="text-[11px] font-medium text-slate-400 mb-2">快速填入预设测试账号：</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setQuickAccount('admin', 'admin123')}
-                className="p-2 bg-slate-950 border border-slate-800 hover:border-indigo-500/50 rounded-lg text-left transition"
-              >
-                <div className="text-xs font-semibold text-slate-200">超级管理员 (admin)</div>
-                <div className="text-[10px] text-slate-500">密码: admin123</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuickAccount('operator', 'ecom2026')}
-                className="p-2 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 rounded-lg text-left transition"
-              >
-                <div className="text-xs font-semibold text-slate-200">运营专员 (operator)</div>
-                <div className="text-[10px] text-slate-500">密码: ecom2026</div>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

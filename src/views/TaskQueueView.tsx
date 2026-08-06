@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ListOrdered, 
   RefreshCw, 
@@ -28,6 +28,16 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
 }) => {
   const [activeTaskLog, setActiveTaskLog] = useState<AITask | null>(tasks[0] || null);
   const [retryingStep, setRetryingStep] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tasks.length > 0) {
+      if (!activeTaskLog || !tasks.find(t => t.id === activeTaskLog.id)) {
+        setActiveTaskLog(tasks[0]);
+      }
+    } else {
+      setActiveTaskLog(null);
+    }
+  }, [tasks]);
 
   const handleStepRetry = async (taskId: string, step: 'gemini' | 'woocommerce') => {
     setRetryingStep(`${taskId}-${step}`);
@@ -74,8 +84,21 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
             <span className="text-[10px] text-slate-400">点击查看详细 Trace 日志</span>
           </div>
 
-          <div className="space-y-4">
-            {tasks.map((task) => {
+          {tasks.length === 0 ? (
+            <div className="py-16 px-4 text-center space-y-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
+              <div className="w-12 h-12 rounded-full bg-slate-800/80 border border-slate-700/60 flex items-center justify-center mx-auto text-slate-400">
+                <Bot className="w-6 h-6 text-slate-400" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-semibold text-slate-200">暂无正在运行的 AI 流水线任务</h4>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  当前没有处于处理或排队中的商品 Task。您可以在“商品智能生成”创建新的上架流水线任务。
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {tasks.map((task) => {
               const isSelected = activeTaskLog?.id === task.id;
 
               return (
@@ -213,6 +236,7 @@ export const TaskQueueView: React.FC<TaskQueueViewProps> = ({
               );
             })}
           </div>
+          )}
         </div>
 
         {/* Right 5 Cols: Live Terminal Log Console */}
