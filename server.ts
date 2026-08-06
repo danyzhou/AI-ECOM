@@ -80,13 +80,36 @@ const PORT = 3000;
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
-// Ensure public uploads temp directory exists and serve static uploads
-const UPLOADS_TEMP_DIR = path.join(process.cwd(), "public", "uploads", "temp");
-if (!fs.existsSync(UPLOADS_TEMP_DIR)) {
-  fs.mkdirSync(UPLOADS_TEMP_DIR, { recursive: true });
+// Ensure public & dist uploads temp directory exists and serve static uploads
+const UPLOADS_PUBLIC_TEMP = path.join(process.cwd(), "public", "uploads", "temp");
+const UPLOADS_DIST_TEMP = path.join(process.cwd(), "dist", "uploads", "temp");
+
+if (!fs.existsSync(UPLOADS_PUBLIC_TEMP)) {
+  fs.mkdirSync(UPLOADS_PUBLIC_TEMP, { recursive: true });
 }
+if (!fs.existsSync(UPLOADS_DIST_TEMP)) {
+  fs.mkdirSync(UPLOADS_DIST_TEMP, { recursive: true });
+}
+
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 app.use("/uploads", express.static(path.join(process.cwd(), "dist", "uploads")));
+
+// Absolute Fallback Handler for static image assets under /uploads/
+app.get("/uploads/*", (req, res) => {
+  const subPath = req.params[0] || "";
+  const candidatePaths = [
+    path.join(process.cwd(), "public", "uploads", subPath),
+    path.join(process.cwd(), "dist", "uploads", subPath),
+    path.resolve(process.cwd(), "public", "uploads", subPath),
+    path.resolve(process.cwd(), "dist", "uploads", subPath)
+  ];
+  for (const cPath of candidatePaths) {
+    if (fs.existsSync(cPath) && fs.statSync(cPath).isFile()) {
+      return res.sendFile(cPath);
+    }
+  }
+  res.status(404).send("Upload asset file not found on server disk");
+});
 
 // ----------------------------------------------------
 // Password Encryption & Security Utilities (PBKDF2)
@@ -1859,6 +1882,10 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
       costPrice: costPrice ? Number(costPrice) : undefined,
       language
     });
+
+    if ((generatedProductData as any)?.fallbackInfo) {
+      log(`[STEP 2/3 AI 节点提示] ${(generatedProductData as any).fallbackInfo}`);
+    }
 
     let customSku = "";
     if (skuPrefix && typeof skuPrefix === "string" && skuPrefix.trim() !== "") {

@@ -16,7 +16,11 @@ function ensureUploadsDirExists() {
  */
 export function saveBase64ImageToLocal(base64Str: string, hostOrigin: string = ""): string | null {
   try {
-    ensureUploadsDirExists();
+    const publicTemp = path.join(process.cwd(), "public", "uploads", "temp");
+    const distTemp = path.join(process.cwd(), "dist", "uploads", "temp");
+    if (!fs.existsSync(publicTemp)) fs.mkdirSync(publicTemp, { recursive: true });
+    if (!fs.existsSync(distTemp)) fs.mkdirSync(distTemp, { recursive: true });
+
     if (typeof base64Str !== "string") return null;
     const trimmed = base64Str.trim();
 
@@ -36,10 +40,17 @@ export function saveBase64ImageToLocal(base64Str: string, hostOrigin: string = "
 
     const hash = crypto.createHash("md5").update(buffer).digest("hex").substring(0, 10);
     const filename = `img_${Date.now()}_${hash}.${ext}`;
-    const filePath = path.join(UPLOADS_TEMP_DIR, filename);
+    const filePathPublic = path.join(publicTemp, filename);
+    const filePathDist = path.join(distTemp, filename);
 
-    fs.writeFileSync(filePath, buffer);
-    console.log(`[Base64 Local Saver] Saved image (${buffer.length} bytes) -> ${filePath}`);
+    fs.writeFileSync(filePathPublic, buffer);
+    try {
+      fs.writeFileSync(filePathDist, buffer);
+    } catch (e) {
+      // ignore dist write if dist doesn't exist yet
+    }
+
+    console.log(`[Base64 Local Saver] Saved image (${buffer.length} bytes) -> ${filePathPublic}`);
 
     const relativePath = `/uploads/temp/${filename}`;
     if (hostOrigin && hostOrigin.startsWith("http")) {
