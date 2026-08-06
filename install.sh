@@ -10,6 +10,20 @@ NC='\033[0m'
 
 PROJECT_DIR="/opt/AI-ECOM"
 
+AUTO_CONFIRM=false
+IS_UNINSTALL=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --uninstall|-u|clean|--clean)
+            IS_UNINSTALL=true
+            ;;
+        -y|--yes|-f|--force)
+            AUTO_CONFIRM=true
+            ;;
+    esac
+done
+
 # 一键卸载逻辑
 do_uninstall() {
     echo -e "${RED}================================================${NC}"
@@ -17,31 +31,51 @@ do_uninstall() {
     echo -e "${RED}================================================${NC}"
     echo -e "${YELLOW}警告：此操作将停止并销毁 Docker 容器、清理数据卷、删除 Nginx 代理配置与本地环境变量！${NC}"
     
-    read -p "确认要彻底卸载 AI-ECOM 系统吗？(输入 y 或 yes 确认): " CONFIRM
-    CONFIRM_LOWER=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
-    if [[ "$CONFIRM_LOWER" != "y" && "$CONFIRM_LOWER" != "yes" ]]; then
-        echo -e "${GREEN}已取消卸载操作。${NC}"
-        exit 0
+    if [ "$AUTO_CONFIRM" != "true" ]; then
+        if [ -c /dev/tty ]; then
+            exec < /dev/tty
+        fi
+        read -p "确认要彻底卸载 AI-ECOM 系统吗？(输入 y 或 yes 确认): " CONFIRM
+        CONFIRM_LOWER=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
+        if [[ "$CONFIRM_LOWER" != "y" && "$CONFIRM_LOWER" != "yes" ]]; then
+            echo -e "${GREEN}已取消卸载操作。${NC}"
+            exit 0
+        fi
+    else
+        echo -e "${YELLOW}检测到免交互强行卸载参数 (-y/--force)，自动跳过二次确认...${NC}"
     fi
 
     echo -e "\n${YELLOW}[1/4] 停止并清理 Docker 容器与数据卷...${NC}"
     if [ -d "$PROJECT_DIR" ]; then
         cd "$PROJECT_DIR"
-        docker compose down -v --rmi local 2>/dev/null || docker compose down -v 2>/dev/null || true
+        docker compose down -v --remove-orphans --rmi local 2>/dev/null || docker compose down -v --remove-orphans 2>/dev/null || docker compose down -v 2>/dev/null || true
     fi
-    docker rm -f ai-ecom-app-1 postgres 2>/dev/null || true
+    docker rm -f ai-ecom-app-1 postgres ai-ecom 2>/dev/null || true
+    docker volume prune -f 2>/dev/null || true
 
     echo -e "\n${YELLOW}[2/4] 清理 Nginx 反向代理配置...${NC}"
     rm -f /etc/nginx/sites-available/ai-ecom
     rm -f /etc/nginx/sites-enabled/ai-ecom
-    systemctl restart nginx 2>/dev/null || true
-    echo -e "${GREEN}✓ Nginx 配置清理完成并已重启服务${NC}"
+    systemctl restart nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
+    echo -e "${GREEN}✓ Nginx 配置清理完成并已重新加载服务${NC}"
 
     echo -e "\n${YELLOW}[3/4] 检查并清理 Swap 虚拟内存...${NC}"
     if [ -f "/swapfile" ]; then
-        read -p "检测到已创建的 2GB Swap 虚拟内存 (/swapfile)，是否同步清理删除？[y/N]: " CLEAN_SWAP
-        CLEAN_SWAP_LOWER=$(echo "$CLEAN_SWAP" | tr '[:upper:]' '[:lower:]')
-        if [[ "$CLEAN_SWAP_LOWER" == "y" || "$CLEAN_SWAP_LOWER" == "yes" ]]; then
+        CLEAN_SWAP_FLAG=false
+        if [ "$AUTO_CONFIRM" = "true" ]; then
+            CLEAN_SWAP_FLAG=true
+        else
+            if [ -c /dev/tty ]; then
+                exec < /dev/tty
+            fi
+            read -p "检测到已创建的 2GB Swap 虚拟内存 (/swapfile)，是否同步清理删除？[y/N]: " CLEAN_SWAP
+            CLEAN_SWAP_LOWER=$(echo "$CLEAN_SWAP" | tr '[:upper:]' '[:lower:]')
+            if [[ "$CLEAN_SWAP_LOWER" == "y" || "$CLEAN_SWAP_LOWER" == "yes" ]]; then
+                CLEAN_SWAP_FLAG=true
+            fi
+        fi
+
+        if [ "$CLEAN_SWAP_FLAG" = "true" ]; then
             swapoff /swapfile 2>/dev/null || true
             rm -f /swapfile
             sed -i '/\/swapfile/d' /etc/fstab
@@ -53,10 +87,13 @@ do_uninstall() {
         echo -e "${GREEN}未找到 /swapfile，跳过 Swap 清理${NC}"
     fi
 
-    echo -e "\n${YELLOW}[4/4] 清理配置文件与临时缓存目录...${NC}"
+    echo -e "\n${YELLOW}[4/4] 清理配置文件与项目目录...${NC}"
     if [ -d "$PROJECT_DIR" ]; then
-        rm -f "$PROJECT_DIR/.env"
-        rm -rf "$PROJECT_DIR/public"
+        rm -rf "$PROJECT_DIR"
+        echo -e "${GREEN}✓ 项目目录 ($PROJECT_DIR) 及其内部数据已完全删除${NC}"
+    else
+        rm -f .env
+        rm -rf public
         echo -e "${GREEN}✓ 项目本地配置文件及数据缓存已完全清理${NC}"
     fi
 
@@ -67,7 +104,7 @@ do_uninstall() {
 }
 
 # 校验命令行入参触发卸载
-if [[ "$1" == "--uninstall" || "$1" == "-u" || "$1" == "clean" || "$1" == "--clean" ]]; then
+if [ "$IS_UNINSTALL" = true ]; then
     do_uninstall
 fi
 

@@ -35,11 +35,11 @@ curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o 
 如果需要彻底清理并卸载 AI-ECOM 系统，可以运行以下本地或远程卸载命令：
 
 ```bash
-# 本地卸载命令：
-sudo bash /opt/AI-ECOM/install.sh --uninstall
+# 1. 免交互一键彻底卸载（推荐，直接清理容器、数据卷与 Nginx 配置）：
+curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh | sudo bash -s -- --uninstall -y
 
-# 远程一键卸载命令：
-curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh | sudo bash -s -- --uninstall
+# 2. 本地交互式卸载：
+sudo bash /opt/AI-ECOM/install.sh --uninstall
 ```
 
 ---

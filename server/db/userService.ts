@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -16,11 +19,17 @@ export interface DBUserRecord {
   updated_at?: string;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || "ai_ecommerce_jwt_secret_key_2026";
 const USERS_FILE = "users.json";
+
+function getJwtSecret(): string {
+  return process.env.JWT_SECRET || "ai_ecommerce_jwt_secret_key_2026";
+}
 
 // Initialize Admin User in Database
 export async function seedAdminUser(): Promise<void> {
+  // Always reload dotenv in seed step to guarantee .env is present
+  dotenv.config();
+
   const adminUser = (process.env.ADMIN_USER || "admin").trim().toLowerCase();
   const adminPass = process.env.ADMIN_PASSWORD || "admin123";
   const adminEmail = process.env.ADMIN_EMAIL || `${adminUser}@ecom-ai.com`;
@@ -45,17 +54,18 @@ export async function seedAdminUser(): Promise<void> {
   if (pool) {
     try {
       const res = await pool.query(
-        "SELECT id FROM users WHERE LOWER(username) = $1 OR role = 'admin'",
-        [adminUser]
+        "SELECT id, username FROM users WHERE role = 'admin' OR LOWER(username) = $1 OR id = $2",
+        [adminUser, "usr-admin-01"]
       );
       if (res.rows.length > 0) {
-        const targetId = res.rows[0].id;
-        await pool.query(
-          `UPDATE users 
-           SET username = $1, password_hash = $2, salt = $3, email = $4, updated_at = NOW()
-           WHERE id = $5`,
-          [adminUser, passwordHash, "bcrypt", adminEmail, targetId]
-        );
+        for (const row of res.rows) {
+          await pool.query(
+            `UPDATE users 
+             SET username = $1, password_hash = $2, salt = $3, email = $4, updated_at = NOW()
+             WHERE id = $5`,
+            [adminUser, passwordHash, "bcrypt", adminEmail, row.id]
+          );
+        }
         console.log(`[AUTH-DB] Upserted admin user (${adminUser}) credentials in PostgreSQL.`);
       } else {
         await pool.query(
@@ -81,19 +91,11 @@ export async function seedAdminUser(): Promise<void> {
 
   // Always keep JSON storage in sync with Upsert logic
   const localUsers = readJSONFile<DBUserRecord[]>(USERS_FILE, []);
-  const existingIdx = localUsers.findIndex(
-    u => u.username.toLowerCase() === adminUser || u.role === "admin"
+  const cleanUsers = localUsers.filter(
+    u => u.username.toLowerCase() !== adminUser && u.role !== "admin" && u.id !== "usr-admin-01"
   );
-  if (existingIdx !== -1) {
-    localUsers[existingIdx].username = adminUser;
-    localUsers[existingIdx].password_hash = passwordHash;
-    localUsers[existingIdx].email = adminEmail;
-    localUsers[existingIdx].salt = "bcrypt";
-    localUsers[existingIdx].updated_at = now;
-  } else {
-    localUsers.push(defaultAdmin);
-  }
-  writeJSONFile(USERS_FILE, localUsers);
+  cleanUsers.unshift(defaultAdmin);
+  writeJSONFile(USERS_FILE, cleanUsers);
 }
 
 // Find user by Username or Email from DB/File
@@ -211,13 +213,13 @@ export function generateJWTToken(user: DBUserRecord): string {
     role: user.role,
     name: user.name,
   };
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: "7d" });
 }
 
 // Verify JWT Token
 export function verifyJWTToken(token: string): any | null {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch (err) {
     return null;
   }
