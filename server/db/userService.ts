@@ -21,16 +21,16 @@ const USERS_FILE = "users.json";
 
 // Initialize Admin User in Database
 export async function seedAdminUser(): Promise<void> {
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@ecom-ai.com";
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-  const adminUsername = "admin";
+  const adminUser = (process.env.ADMIN_USER || "admin").trim().toLowerCase();
+  const adminPass = process.env.ADMIN_PASSWORD || "admin123";
+  const adminEmail = process.env.ADMIN_EMAIL || `${adminUser}@ecom-ai.com`;
 
-  const passwordHash = bcrypt.hashSync(adminPassword, 10);
+  const passwordHash = bcrypt.hashSync(adminPass, 10);
   const now = new Date().toISOString();
 
   const defaultAdmin: DBUserRecord = {
     id: "usr-admin-01",
-    username: adminUsername,
+    username: adminUser,
     password_hash: passwordHash,
     salt: "bcrypt",
     name: "System Director (Admin)",
@@ -44,8 +44,20 @@ export async function seedAdminUser(): Promise<void> {
   const pool = getPgPool();
   if (pool) {
     try {
-      const res = await pool.query("SELECT id FROM users WHERE username = $1 OR email = $2", [adminUsername, adminEmail]);
-      if (res.rows.length === 0) {
+      const res = await pool.query(
+        "SELECT id FROM users WHERE LOWER(username) = $1 OR role = 'admin'",
+        [adminUser]
+      );
+      if (res.rows.length > 0) {
+        const targetId = res.rows[0].id;
+        await pool.query(
+          `UPDATE users 
+           SET username = $1, password_hash = $2, salt = $3, email = $4, updated_at = NOW()
+           WHERE id = $5`,
+          [adminUser, passwordHash, "bcrypt", adminEmail, targetId]
+        );
+        console.log(`[AUTH-DB] Upserted admin user (${adminUser}) credentials in PostgreSQL.`);
+      } else {
         await pool.query(
           `INSERT INTO users (id, username, password_hash, salt, name, email, role, avatar, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
@@ -60,20 +72,28 @@ export async function seedAdminUser(): Promise<void> {
             defaultAdmin.avatar
           ]
         );
-        console.log(`[AUTH-DB] Initialized default admin user (${adminUsername}) in PostgreSQL with bcrypt encryption.`);
+        console.log(`[AUTH-DB] Initialized default admin user (${adminUser}) in PostgreSQL with bcrypt encryption.`);
       }
     } catch (err: any) {
       console.warn("[AUTH-DB] Failed to seed admin in PostgreSQL, falling back to file storage:", err.message);
     }
   }
 
-  // Always keep JSON storage in sync
+  // Always keep JSON storage in sync with Upsert logic
   const localUsers = readJSONFile<DBUserRecord[]>(USERS_FILE, []);
-  const existingIdx = localUsers.findIndex(u => u.username === adminUsername || u.email === adminEmail);
-  if (existingIdx === -1) {
+  const existingIdx = localUsers.findIndex(
+    u => u.username.toLowerCase() === adminUser || u.role === "admin"
+  );
+  if (existingIdx !== -1) {
+    localUsers[existingIdx].username = adminUser;
+    localUsers[existingIdx].password_hash = passwordHash;
+    localUsers[existingIdx].email = adminEmail;
+    localUsers[existingIdx].salt = "bcrypt";
+    localUsers[existingIdx].updated_at = now;
+  } else {
     localUsers.push(defaultAdmin);
-    writeJSONFile(USERS_FILE, localUsers);
   }
+  writeJSONFile(USERS_FILE, localUsers);
 }
 
 // Find user by Username or Email from DB/File

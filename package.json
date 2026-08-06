@@ -7,6 +7,8 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
+    "db:migrate": "tsx -e \"import { initDatabase } from './server/db/databaseService.js'; await initDatabase(); process.exit(0);\"",
+    "db:seed": "tsx -e \"import { seedAdminUser } from './server/db/userService.js'; await seedAdminUser(); process.exit(0);\"",
     "clean": "rm -rf dist server.cjs",
     "lint": "tsc --noEmit"
   },

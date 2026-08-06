@@ -130,18 +130,20 @@ interface UserRecord {
   createdAt: string;
 }
 
-// Pre-seeded User Database with encrypted default credentials
-const defaultAdminPass = hashPassword("admin123");
+// Pre-seeded User Database with encrypted credentials from environment variables
+const envAdminUser = (process.env.ADMIN_USER || "admin").trim().toLowerCase();
+const envAdminPass = process.env.ADMIN_PASSWORD || "admin123";
+const defaultAdminPass = hashPassword(envAdminPass);
 const defaultOpPass = hashPassword("ecom2026");
 
 const usersDb: Map<string, UserRecord> = new Map([
   [
-    "admin",
+    envAdminUser,
     {
       id: "usr-admin-01",
-      username: "admin",
+      username: envAdminUser,
       name: "E-Com Director (Admin)",
-      email: "admin@ecom-ai.com",
+      email: process.env.ADMIN_EMAIL || `${envAdminUser}@ecom-ai.com`,
       role: "admin",
       avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
       passwordHash: defaultAdminPass.hash,
@@ -169,7 +171,7 @@ const usersDb: Map<string, UserRecord> = new Map([
 const activeSessions: Map<string, { user: UserRecord; token: string; createdAt: string }> = new Map();
 
 // Default initial admin session token for seamless dev initialization
-const initialAdminUser = usersDb.get("admin")!;
+const initialAdminUser = usersDb.get(envAdminUser)!;
 const initialToken = "ecom_token_admin_session_8899776655";
 activeSessions.set(initialToken, {
   user: initialAdminUser,
