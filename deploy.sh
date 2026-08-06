@@ -14,7 +14,7 @@ echo -e "${BLUE}================================================${NC}"
 echo -e "${GREEN}    AI-ECOM 一键自动化部署与 SSL 证书配置脚本      ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
-# 1. 检查并安装基础环境依赖
+# 1. 检查并安装基础环境依赖 (util-linux 包含 fallocate，certbot 负责 SSL)
 echo -e "\n${YELLOW}[1/8] 检查并自动化安装基础环境依赖...${NC}"
 apt-get update -y
 apt-get install -y curl git nginx ufw util-linux certbot python3-certbot-nginx
@@ -26,7 +26,7 @@ if ! command -v docker &> /dev/null; then
 fi
 systemctl enable --now docker
 
-# 2. 自动开启 Swap 虚拟内存
+# 2. 自动开启 Swap 虚拟内存 (防止 1G/2G 内存 VPS 在 npm build 时被 Killed)
 echo -e "\n${YELLOW}[2/8] 检查并配置 Swap 虚拟内存...${NC}"
 SWAP_SIZE=$(free -m | awk '/Swap:/ {print $2}')
 if [ -z "$SWAP_SIZE" ] || [ "$SWAP_SIZE" -lt 1000 ]; then
@@ -54,7 +54,7 @@ fi
 
 cd "$PROJECT_DIR"
 
-# 自动补齐 public 目录
+# 自动补齐 public 目录（避免 Dockerfile COPY 报错）
 mkdir -p "$PROJECT_DIR/public"
 touch "$PROJECT_DIR/public/.gitkeep"
 
@@ -94,7 +94,7 @@ while [ -z "$ADMIN_PASS" ]; do
     read -p "密码不能为空，请重新设置系统管理员密码: " ADMIN_PASS
 done
 
-# 写入 .env
+# 写入 .env（显式增加 API_TIMEOUT 防止全自动流水线断连）
 cat <<EOF > .env
 NODE_ENV=production
 PORT=3000
@@ -126,7 +126,7 @@ echo -e "\n${YELLOW}[6/8] 执行数据库 Migrations 与初始化 Admin 账号..
 docker exec -i ai-ecom-app-1 npm run db:migrate 2>/dev/null || true
 docker exec -i ai-ecom-app-1 npm run db:seed 2>/dev/null || true
 
-# 7. 配置 Nginx 反向代理与超时设置
+# 7. 配置 Nginx 域名绑定、防 HTTP 502/504 超时设置与放行防火墙
 echo -e "\n${YELLOW}[7/8] 配置 Nginx 反向代理(支持长耗时 AI 生成)与防火墙端口...${NC}"
 ufw allow 80/tcp 2>/dev/null || true
 ufw allow 443/tcp 2>/dev/null || true
