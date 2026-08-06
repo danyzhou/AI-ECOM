@@ -86,7 +86,7 @@ export default function App() {
   const loadBackendData = async () => {
     try {
       const prodRes = await fetchProducts();
-      if (prodRes?.products && Array.isArray(prodRes.products) && prodRes.products.length > 0) {
+      if (prodRes?.products && Array.isArray(prodRes.products)) {
         setProducts(prodRes.products);
       }
       const taskData = await fetchAITasks();

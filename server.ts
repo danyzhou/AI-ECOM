@@ -951,11 +951,15 @@ app.post("/api/gemini/generate-product-content", async (req, res) => {
 
 // Products API Routes
 app.get("/api/products", (req, res) => {
+  const productsFilePath = path.join(process.cwd(), "data_db", "products.json");
+  const productsFileExists = fs.existsSync(productsFilePath);
   let products = getDbProducts();
-  if (!products || products.length === 0) {
+
+  if (!productsFileExists) {
     products = Array.from(productsDb.values());
     products.forEach((p: any) => saveDbProduct(p));
   } else {
+    productsDb.clear();
     products.forEach((p: any) => productsDb.set(p.id, p));
   }
   res.json({ success: true, products });
