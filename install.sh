@@ -224,8 +224,8 @@ sleep 10
 
 # 6. 强行初始化数据库结构与管理员账号
 echo -e "\n${YELLOW}[6/8] 执行数据库 Migrations 与初始化 Admin 账号...${NC}"
-docker exec -i ai-ecom-app-1 npm run db:migrate 2>/dev/null || true
-docker exec -i ai-ecom-app-1 npm run db:seed 2>/dev/null || true
+docker exec -e ADMIN_USER="$ADMIN_USER" -e ADMIN_PASSWORD="$ADMIN_PASS" -e ADMIN_PASS="$ADMIN_PASS" -i ecom-op-center-app npm run db:migrate 2>/dev/null || docker exec -e ADMIN_USER="$ADMIN_USER" -e ADMIN_PASSWORD="$ADMIN_PASS" -e ADMIN_PASS="$ADMIN_PASS" -i ai-ecom-app-1 npm run db:migrate 2>/dev/null || true
+docker exec -e ADMIN_USER="$ADMIN_USER" -e ADMIN_PASSWORD="$ADMIN_PASS" -e ADMIN_PASS="$ADMIN_PASS" -i ecom-op-center-app npm run db:seed 2>/dev/null || docker exec -e ADMIN_USER="$ADMIN_USER" -e ADMIN_PASSWORD="$ADMIN_PASS" -e ADMIN_PASS="$ADMIN_PASS" -i ai-ecom-app-1 npm run db:seed 2>/dev/null || true
 
 # 7. 配置 Nginx 反向代理与超时设置
 echo -e "\n${YELLOW}[7/8] 配置 Nginx 反向代理(支持长耗时 AI 生成)与防火墙端口...${NC}"

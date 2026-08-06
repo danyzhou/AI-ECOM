@@ -9,11 +9,15 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - DATABASE_URL=postgres://ecom_user:ecom_secure_pass_2026@postgres:5432/ecom_op_center
+      - DATABASE_URL=${DATABASE_URL:-postgresql://ecom_user:ecom_secure_pass_2026@postgres:5432/ecom_op_center}
       - JWT_SECRET=${JWT_SECRET:-production_super_secret_jwt_key_2026_ecom_center}
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     depends_on:
@@ -28,15 +32,15 @@ services:
     container_name: ecom-postgres
     restart: always
     environment:
-      POSTGRES_USER: ecom_user
-      POSTGRES_PASSWORD: ecom_secure_pass_2026
-      POSTGRES_DB: ecom_op_center
+      POSTGRES_USER: ${POSTGRES_USER:-ecom_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecom_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-ecom_op_center}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ecom_user -d ecom_op_center"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecom_user} -d ${POSTGRES_DB:-ecom_op_center}"]
       interval: 10s
       timeout: 5s
       retries: 5
