@@ -30,11 +30,24 @@ curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh -o 
 > 4. **数据库 & 动态账号**：启动 PostgreSQL 容器，自动执行 Schema Migration 以及包含自定义 `ADMIN_USER` / `ADMIN_PASSWORD` 的账号初始化。
 > 5. **HTTPS 证书**：使用 Certbot 自动申请 Let's Encrypt 免费 SSL 证书并开启 HTTP 到 HTTPS 重定向与自动续期。
 
+### 🗑️ 一键彻底卸载
+
+如果需要彻底清理并卸载 AI-ECOM 系统，可以运行以下本地或远程卸载命令：
+
+```bash
+# 本地卸载命令：
+sudo bash /opt/AI-ECOM/install.sh --uninstall
+
+# 远程一键卸载命令：
+curl -sSL https://raw.githubusercontent.com/danyzhou/AI-ECOM/main/install.sh | sudo bash -s -- --uninstall
+```
+
 ---
 
 ## 📖 目录 (Table of Contents)
 
 - [⚡ 极速一键部署 (Recommended for VPS)](#-极速一键部署-recommended-for-vps)
+  - [🗑️ 一键彻底卸载](#️-一键彻底卸载)
 - [✨ 项目简介与核心痛点](#-项目简介与核心痛点)
 - [🔥 核心功能亮点](#-核心功能亮点)
 - [🛠️ 技术栈](#️-技术栈)
