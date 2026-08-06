@@ -58,8 +58,11 @@ cd "$PROJECT_DIR"
 mkdir -p "$PROJECT_DIR/public"
 touch "$PROJECT_DIR/public/.gitkeep"
 
-# 自动修复 Dockerfile 中的 public 复制逻辑 (若存在)
+# 自动修复 Dockerfile 中的 npm ci 与 public 复制逻辑 (避免无 package-lock.json 导致构建崩溃)
 if [ -f "Dockerfile" ]; then
+    echo -e "${YELLOW}检测到 Dockerfile，正在进行依赖安装命令与兼容性防护修补...${NC}"
+    sed -i 's/npm ci/npm install/g' Dockerfile
+    sed -i 's/--only=production/--omit=dev/g' Dockerfile
     sed -i 's/COPY --from=builder \/app\/public \.\/public/# COPY --from=builder \/app\/public \.\/public/' Dockerfile
 fi
 
