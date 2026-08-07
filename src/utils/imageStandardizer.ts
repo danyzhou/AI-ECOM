@@ -87,9 +87,14 @@ export function normalizeImageUrl(url?: string): string {
   if (!url) return '';
   if (typeof url !== 'string') return '';
   const trimmed = url.trim();
-  if (trimmed.includes('ai.zosy.net')) {
-    return trimmed.replace(/^https?:\/\/ai\.zosy\.net/, '');
+  if (trimmed.startsWith('data:image')) return trimmed;
+
+  // Strip any domain / protocol if /uploads/ is present so that browser loads relative to current origin
+  if (trimmed.includes('/uploads/')) {
+    const idx = trimmed.indexOf('/uploads/');
+    return trimmed.substring(idx);
   }
+
   return trimmed;
 }
 

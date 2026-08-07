@@ -58,8 +58,7 @@ export function saveBase64ImageToLocal(base64Str: string, hostOrigin: string = "
       return `${cleanOrigin}${relativePath}`;
     }
 
-    const defaultHost = process.env.APP_URL || process.env.DEV_SERVER_URL || "http://localhost:3000";
-    return `${defaultHost.replace(/\/+$/, "")}${relativePath}`;
+    return relativePath;
   } catch (err: any) {
     console.error(`[Base64 Local Saver Error]:`, err.message || err);
     return null;
@@ -281,6 +280,22 @@ export async function uploadMedia(
       imageBuffer = Buffer.from(arrayBuffer);
       const ct = imgRes.headers.get("content-type");
       if (ct) contentType = ct;
+    } else if (imageUrl.startsWith("/uploads/")) {
+      const publicPath = path.join(process.cwd(), "public", imageUrl);
+      const distPath = path.join(process.cwd(), "dist", imageUrl);
+      let localFilePath = publicPath;
+      if (!fs.existsSync(localFilePath) && fs.existsSync(distPath)) {
+        localFilePath = distPath;
+      }
+      if (fs.existsSync(localFilePath)) {
+        console.log(`[WP Media Upload] 读取本地磁盘图片文件: ${localFilePath}`);
+        imageBuffer = fs.readFileSync(localFilePath);
+        if (imageUrl.endsWith(".png")) contentType = "image/png";
+        else if (imageUrl.endsWith(".webp")) contentType = "image/webp";
+        else contentType = "image/jpeg";
+      } else {
+        return { image_url: imageUrl };
+      }
     } else {
       return { image_url: imageUrl };
     }
@@ -396,6 +411,13 @@ export async function prepareProductImages(
 
     if (rawSrc.startsWith("http://") || rawSrc.startsWith("https://")) {
       finalWcImages.push({ src: rawSrc });
+    } else if (rawSrc.startsWith("/uploads/")) {
+      const cleanOrigin = hostOrigin ? hostOrigin.replace(/\/+$/, "") : "";
+      if (cleanOrigin) {
+        finalWcImages.push({ src: `${cleanOrigin}${rawSrc}` });
+      } else {
+        finalWcImages.push({ src: rawSrc });
+      }
     } else if (isBase64Image(rawSrc) || rawSrc.length > 300) {
       console.log(`[Image Pre-processor] 拦截到 Base64 格式图片，解码并转存至本地静态服务...`);
       const publicUrl = saveBase64ImageToLocal(rawSrc, hostOrigin);

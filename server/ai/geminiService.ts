@@ -174,8 +174,8 @@ async function applyFreeTierThrottle(): Promise<void> {
  */
 export async function callGeminiWithRetry<T>(
   fn: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelayMs: number = 5000
+  maxRetries: number = 1,
+  initialDelayMs: number = 1500
 ): Promise<T> {
   let attempt = 0;
   while (true) {
@@ -339,7 +339,7 @@ export async function callOpenAICompatibleAPI(input: {
     payload.response_format = { type: 'json_object' };
   }
 
-  const maxAttempts = 3; // Attempt 1 + 2 Retries on 502/504/Timeout/Network
+  const maxAttempts = 2; // Attempt 1 + 1 Fast Retry on 502/504/Timeout/Network
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -353,7 +353,7 @@ export async function callOpenAICompatibleAPI(input: {
           'Authorization': authHeaderValue
         },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(120000) // 120 Seconds Timeout (120,000 ms)
+        signal: AbortSignal.timeout(18000) // 18 Seconds Fast Timeout per request
       });
 
       if (!res.ok) {
