@@ -81,16 +81,37 @@ const PORT = 3000;
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
-// Ensure public & dist uploads temp directory exists and serve static uploads
-const UPLOADS_PUBLIC_TEMP = path.join(process.cwd(), "public", "uploads", "temp");
-const UPLOADS_DIST_TEMP = path.join(process.cwd(), "dist", "uploads", "temp");
+// ----------------------------------------------------
+// System Directory Check & Static Assets Uploads Engine
+// ----------------------------------------------------
+const uploadsDir = path.resolve(process.cwd(), "public", "uploads");
+const tempDir = path.resolve(uploadsDir, "temp");
+const distUploadsDir = path.resolve(process.cwd(), "dist", "uploads");
+const distTempDir = path.resolve(distUploadsDir, "temp");
 
-if (!fs.existsSync(UPLOADS_PUBLIC_TEMP)) {
-  fs.mkdirSync(UPLOADS_PUBLIC_TEMP, { recursive: true });
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  try { fs.chmodSync(uploadsDir, 0o755); } catch {}
+  try { fs.chmodSync(tempDir, 0o755); } catch {}
+} catch (err: any) {
+  console.error("[System Dir Check] 自动创建/授权 uploads 目录失败:", err.message);
 }
-if (!fs.existsSync(UPLOADS_DIST_TEMP)) {
-  fs.mkdirSync(UPLOADS_DIST_TEMP, { recursive: true });
-}
+
+try {
+  if (!fs.existsSync(distUploadsDir)) {
+    fs.mkdirSync(distUploadsDir, { recursive: true });
+  }
+  if (!fs.existsSync(distTempDir)) {
+    fs.mkdirSync(distTempDir, { recursive: true });
+  }
+  try { fs.chmodSync(distUploadsDir, 0o755); } catch {}
+  try { fs.chmodSync(distTempDir, 0o755); } catch {}
+} catch (err: any) {}
 
 app.use("/uploads", (req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -98,13 +119,16 @@ app.use("/uploads", (req, res, next) => {
   next();
 });
 
-app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads"), {
+app.use("/uploads", express.static(path.resolve(process.cwd(), "public", "uploads"), {
+  fallthrough: true,
   setHeaders: (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   }
 }));
-app.use("/uploads", express.static(path.join(process.cwd(), "dist", "uploads"), {
+
+app.use("/uploads", express.static(path.resolve(process.cwd(), "dist", "uploads"), {
+  fallthrough: true,
   setHeaders: (res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
@@ -117,8 +141,6 @@ app.get("/uploads/*", (req, res) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   const subPath = req.params[0] || "";
   const candidatePaths = [
-    path.join(process.cwd(), "public", "uploads", subPath),
-    path.join(process.cwd(), "dist", "uploads", subPath),
     path.resolve(process.cwd(), "public", "uploads", subPath),
     path.resolve(process.cwd(), "dist", "uploads", subPath)
   ];

@@ -275,16 +275,35 @@ export async function uploadMedia(
       contentType = parts[0].replace("data:", "") || "image/jpeg";
       imageBuffer = Buffer.from(parts[1], "base64");
     } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      console.log(`[WP Media Upload] 下载远程公网图片素材: ${imageUrl}`);
-      const imgRes = await fetch(imageUrl);
-      if (!imgRes.ok) {
-        console.warn(`[WP Media Upload Warning] 无法下载图片 (HTTP ${imgRes.status})，降级使用原始 URL`);
-        return { image_url: imageUrl };
+      if (imageUrl.includes("/uploads/")) {
+        const uploadSubPath = "/uploads/" + imageUrl.split("/uploads/")[1];
+        const publicPath = path.join(process.cwd(), "public", uploadSubPath);
+        const distPath = path.join(process.cwd(), "dist", uploadSubPath);
+        let localFilePath = publicPath;
+        if (!fs.existsSync(localFilePath) && fs.existsSync(distPath)) {
+          localFilePath = distPath;
+        }
+        if (fs.existsSync(localFilePath)) {
+          console.log(`[WP Media Upload] 从物理磁盘读取本站图片: ${localFilePath}`);
+          imageBuffer = fs.readFileSync(localFilePath);
+          if (uploadSubPath.endsWith(".png")) contentType = "image/png";
+          else if (uploadSubPath.endsWith(".webp")) contentType = "image/webp";
+          else contentType = "image/jpeg";
+        }
       }
-      const arrayBuffer = await imgRes.arrayBuffer();
-      imageBuffer = Buffer.from(arrayBuffer);
-      const ct = imgRes.headers.get("content-type");
-      if (ct && ct.includes("image/")) contentType = ct.split(";")[0].trim();
+
+      if (!imageBuffer!) {
+        console.log(`[WP Media Upload] 下载远程公网图片素材: ${imageUrl}`);
+        const imgRes = await fetch(imageUrl);
+        if (!imgRes.ok) {
+          console.warn(`[WP Media Upload Warning] 无法下载图片 (HTTP ${imgRes.status})，降级使用原始 URL`);
+          return { image_url: imageUrl };
+        }
+        const arrayBuffer = await imgRes.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+        const ct = imgRes.headers.get("content-type");
+        if (ct && ct.includes("image/")) contentType = ct.split(";")[0].trim();
+      }
     } else if (imageUrl.startsWith("/uploads/")) {
       const publicPath = path.join(process.cwd(), "public", imageUrl);
       const distPath = path.join(process.cwd(), "dist", imageUrl);
@@ -408,32 +427,54 @@ export async function prepareProductImages(
     });
   }
 
-  // Iterate candidates and convert Base64 -> Local Static Public URL
+  // Iterate candidates and pre-upload to WordPress Media Library
   for (const itemSrc of rawCandidates) {
     const rawSrc = itemSrc.trim();
     if (!rawSrc || processedUrls.has(rawSrc)) continue;
     processedUrls.add(rawSrc);
 
-    if (rawSrc.startsWith("http://") || rawSrc.startsWith("https://")) {
-      finalWcImages.push({ src: rawSrc });
-    } else if (rawSrc.startsWith("/uploads/")) {
-      const cleanOrigin = hostOrigin ? hostOrigin.replace(/\/+$/, "") : "";
-      if (cleanOrigin) {
-        finalWcImages.push({ src: `${cleanOrigin}${rawSrc}` });
-      } else {
-        finalWcImages.push({ src: rawSrc });
-      }
-    } else if (isBase64Image(rawSrc) || rawSrc.length > 300) {
+    let imageToUpload = rawSrc;
+
+    if (isBase64Image(rawSrc) || rawSrc.length > 300) {
       console.log(`[Image Pre-processor] 拦截到 Base64 格式图片，解码并转存至本地静态服务...`);
       const publicUrl = saveBase64ImageToLocal(rawSrc, hostOrigin);
-      if (publicUrl && (publicUrl.startsWith("http://") || publicUrl.startsWith("https://"))) {
-        console.log(`[Image Pre-processor Success] Base64 图片转存成功，公网 URL: ${publicUrl}`);
-        finalWcImages.push({ src: publicUrl });
-      } else {
-        console.warn(`[Image Pre-processor Warning] Base64 转存失败或未能生成公网 URL`);
+      if (publicUrl) {
+        imageToUpload = publicUrl;
       }
+    }
+
+    // Try WP Media API Pre-upload (Two-Step Product Image Upload)
+    let uploadedMediaId: number | undefined;
+    let uploadedMediaUrl: string | undefined;
+
+    if (config && config.consumerKey && config.consumerSecret) {
+      try {
+        const fn = `prod_img_${Date.now()}_${Math.floor(Math.random() * 1000)}.jpg`;
+        console.log(`[Image Pre-processor] 触发 2-Step 预上传：将本地图片素材传至 WordPress 媒体库...`);
+        const mediaRes = await uploadMedia(config, imageToUpload, fn);
+        if (mediaRes && mediaRes.media_id) {
+          uploadedMediaId = mediaRes.media_id;
+          uploadedMediaUrl = mediaRes.image_url;
+          console.log(`[Image Pre-processor Success] WP 媒体库预上传成功, Media ID: #${uploadedMediaId}`);
+        }
+      } catch (mediaErr: any) {
+        console.warn(`[Image Pre-processor Warning] WP 媒体库预上传异常: ${mediaErr.message || mediaErr}`);
+      }
+    }
+
+    if (uploadedMediaId) {
+      finalWcImages.push({ id: uploadedMediaId, src: uploadedMediaUrl });
     } else {
-      console.warn(`[Image Pre-processor Warning] 格式未识别的图片跳过: ${rawSrc.substring(0, 40)}`);
+      let fallbackUrl = imageToUpload;
+      if (imageToUpload.startsWith("/uploads/")) {
+        const cleanOrigin = hostOrigin ? hostOrigin.replace(/\/+$/, "") : "";
+        fallbackUrl = cleanOrigin ? `${cleanOrigin}${imageToUpload}` : imageToUpload;
+      }
+      if (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://")) {
+        finalWcImages.push({ src: fallbackUrl });
+      } else {
+        console.warn(`[Image Pre-processor Warning] 图片格式不支持且预上传失败: ${imageToUpload.substring(0, 40)}`);
+      }
     }
   }
 
