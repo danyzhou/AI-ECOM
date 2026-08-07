@@ -1,7 +1,68 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import https from "https";
+import http from "http";
 import { addSystemLog } from "../logging/logService";
+
+// Disable SSL certificate verification for Node outgoing HTTPS requests
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
+// Try setting undici global dispatcher for SSL bypass in Node fetch
+let undiciDispatcher: any = null;
+try {
+  const undici = require("undici");
+  if (undici && undici.Agent) {
+    undiciDispatcher = new undici.Agent({
+      connect: {
+        rejectUnauthorized: false
+      }
+    });
+    if (undici.setGlobalDispatcher) {
+      undici.setGlobalDispatcher(undiciDispatcher);
+    }
+  }
+} catch (e) {
+  // undici fallback to process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+}
+
+const DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 AI-Ecom-Publisher/1.0";
+
+/**
+ * Robust fetch wrapper handling SSL certificate decoupling, headers, and custom timeouts
+ */
+async function customFetch(url: string, options: any = {}, timeoutMs: number = 60000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const mergedHeaders: Record<string, string> = {
+    "User-Agent": DEFAULT_USER_AGENT,
+    "Accept": "application/json, text/plain, */*",
+    ...(options.headers || {})
+  };
+
+  const fetchOptions: any = {
+    ...options,
+    headers: mergedHeaders,
+    signal: controller.signal
+  };
+
+  if (undiciDispatcher) {
+    fetchOptions.dispatcher = undiciDispatcher;
+  }
+
+  try {
+    const response = await fetch(url, fetchOptions);
+    clearTimeout(timer);
+    return response as Response;
+  } catch (err: any) {
+    clearTimeout(timer);
+    const causeMsg = err.cause ? (err.cause.message || String(err.cause)) : "";
+    const fullMsg = causeMsg ? `${err.message} (${causeMsg})` : err.message;
+    console.error(`[Network Request Failed] ${options.method || "GET"} ${url}: ${fullMsg}`);
+    throw new Error(fullMsg);
+  }
+}
 
 const UPLOADS_TEMP_DIR = path.join(process.cwd(), "public", "uploads", "temp");
 
@@ -133,14 +194,14 @@ export async function testConnection(config: WooCommerceConfig) {
   const authHeader = getAuthHeader(config.consumerKey, config.consumerSecret);
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await customFetch(endpoint, {
       method: "GET",
       headers: {
         Authorization: authHeader,
         "User-Agent": "AI-Ecom-Studio-Publisher/1.0",
         Accept: "application/json",
       },
-    });
+    }, 15000);
 
     const latencyMs = Date.now() - startTime;
 
@@ -154,10 +215,10 @@ export async function testConnection(config: WooCommerceConfig) {
       let currency = "USD";
 
       try {
-        const sysRes = await fetch(`${siteUrl}/wp-json/wc/v3/system_status`, {
+        const sysRes = await customFetch(`${siteUrl}/wp-json/wc/v3/system_status`, {
           method: "GET",
           headers: { Authorization: authHeader, Accept: "application/json" }
-        });
+        }, 10000);
         if (sysRes.ok) {
           const sysData: any = await sysRes.json();
           storeName = sysData?.environment?.site_title || sysData?.settings?.store_name || storeName;
@@ -298,7 +359,7 @@ export async function uploadMedia(
 
       if (!imageBuffer!) {
         console.log(`[WP Media Upload] 下载远程公网图片素材: ${imageUrl}`);
-        const imgRes = await fetch(imageUrl);
+        const imgRes = await customFetch(imageUrl, { method: "GET" }, 30000);
         if (!imgRes.ok) {
           console.warn(`[WP Media Upload Warning] 无法下载图片 (HTTP ${imgRes.status})，降级使用原始 URL`);
           return { image_url: imageUrl };
@@ -330,7 +391,7 @@ export async function uploadMedia(
 
     console.log(`[WP Media Uploading] POST ${endpoint} (Filename: ${safeFilename}, Content-Type: ${contentType})`);
 
-    const res = await fetch(endpoint, {
+    const res = await customFetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: authHeader,
@@ -339,7 +400,7 @@ export async function uploadMedia(
         "User-Agent": "AI-Ecom-Studio-Publisher/1.0",
       },
       body: imageBuffer,
-    });
+    }, 45000);
 
     const latencyMs = Date.now() - startTime;
     const resText = await res.text();
@@ -567,7 +628,7 @@ export async function createProduct(
   console.log(`[WooCommerce Create Product] POST ${endpoint} (SKU: ${payload.sku}, Images Count: ${payload.images.length})`);
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await customFetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: authHeader,
@@ -576,7 +637,7 @@ export async function createProduct(
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
-    });
+    }, 60000);
 
     const latencyMs = Date.now() - startTime;
     const resText = await res.text();
@@ -636,7 +697,7 @@ export async function createProduct(
       if (isImageError) {
         console.warn(`[WooCommerce Create Product Image Fallback] 检测到 WP 媒体文件类型/权限错误 (${errMsg})，触发自动容错降级，剔除图片数据重试发布...`);
         const retryPayload = { ...payload, images: [] };
-        const retryRes = await fetch(endpoint, {
+        const retryRes = await customFetch(endpoint, {
           method: "POST",
           headers: {
             Authorization: authHeader,
@@ -645,7 +706,7 @@ export async function createProduct(
             Accept: "application/json",
           },
           body: JSON.stringify(retryPayload),
-        });
+        }, 60000);
 
         const retryText = await retryRes.text();
         if (retryRes.ok) {
@@ -717,14 +778,14 @@ export async function syncProductStatus(
   const startTime = Date.now();
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await customFetch(endpoint, {
       method: "GET",
       headers: {
         Authorization: authHeader,
         "User-Agent": "AI-Ecom-Studio-Publisher/1.0",
         Accept: "application/json",
       },
-    });
+    }, 20000);
 
     const latencyMs = Date.now() - startTime;
 
@@ -807,7 +868,7 @@ export async function updateProduct(
   console.log(`[WooCommerce Update Product] PUT ${endpoint}`);
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await customFetch(endpoint, {
       method: "PUT",
       headers: {
         Authorization: authHeader,
@@ -816,7 +877,7 @@ export async function updateProduct(
         Accept: "application/json",
       },
       body: JSON.stringify(payload),
-    });
+    }, 60000);
 
     const latencyMs = Date.now() - startTime;
     const resText = await res.text();

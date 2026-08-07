@@ -3,6 +3,10 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 dotenv.config();
+
+// Disable SSL certificate verification for Node outgoing HTTPS requests
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
@@ -2112,7 +2116,7 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
         mediaResult = await Promise.race([
           uploadMedia(targetStoreConfig, processedImage, `${finalSku}.jpg`),
           new Promise<{ media_id?: undefined; image_url: string }>((resolve) =>
-            setTimeout(() => resolve({ media_id: undefined, image_url: processedImage }), 10000)
+            setTimeout(() => resolve({ media_id: undefined, image_url: processedImage }), 35000)
           )
         ]);
       } catch (mediaErr: any) {
@@ -2129,7 +2133,7 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
             "publish"
           ),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("WooCommerce API 发布超时 (15s)")), 15000)
+            setTimeout(() => reject(new Error("WooCommerce API 发布超时 (60s)")), 60000)
           )
         ]);
 
