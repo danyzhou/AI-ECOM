@@ -53,8 +53,12 @@ export function saveBase64ImageToLocal(base64Str: string, hostOrigin: string = "
     console.log(`[Base64 Local Saver] Saved image (${buffer.length} bytes) -> ${filePathPublic}`);
 
     const relativePath = `/uploads/temp/${filename}`;
-    if (hostOrigin && hostOrigin.startsWith("http")) {
-      const cleanOrigin = hostOrigin.replace(/\/+$/, "");
+    const baseUrl = (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim())
+      ? process.env.APP_BASE_URL.trim()
+      : hostOrigin;
+
+    if (baseUrl && baseUrl.startsWith("http")) {
+      const cleanOrigin = baseUrl.replace(/\/+$/, "");
       return `${cleanOrigin}${relativePath}`;
     }
 
@@ -389,7 +393,9 @@ export async function prepareProductImages(
   const finalWcImages: Array<{ id?: number; src?: string }> = [];
   const processedUrls = new Set<string>();
 
-  const hostOrigin = explicitHostOrigin || productData._hostOrigin || process.env.APP_URL || process.env.DEV_SERVER_URL || "http://localhost:3000";
+  const hostOrigin = (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim())
+    ? process.env.APP_BASE_URL.trim().replace(/\/+$/, "")
+    : (explicitHostOrigin || productData._hostOrigin || process.env.APP_URL || process.env.DEV_SERVER_URL || "http://localhost:3000");
 
   // 1. If media_id already exists and is valid
   if (productData.media_id && typeof productData.media_id === "number") {

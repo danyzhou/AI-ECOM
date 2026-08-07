@@ -1553,7 +1553,7 @@ app.post("/api/woocommerce/publish", async (req, res) => {
     // Create product directly via WooCommerce REST API (POST /wp-json/wc/v3/products)
     let wcResult: { id: number; permalink: string; status: string; sku: string };
     try {
-      const hostOrigin = `${req.headers['x-forwarded-proto'] || req.protocol || 'http'}://${req.headers['x-forwarded-host'] || req.headers.host}`;
+      const hostOrigin = getResolvedHostOrigin(req);
       const payload = {
         ...targetProduct,
         _hostOrigin: hostOrigin,
@@ -1786,6 +1786,31 @@ app.post("/api/settings/admin-account", authenticateToken, requireAdminRole, asy
   }
 });
 
+function getResolvedHostOrigin(req?: Request): string {
+  if (process.env.APP_BASE_URL && process.env.APP_BASE_URL.trim()) {
+    return process.env.APP_BASE_URL.trim().replace(/\/+$/, "");
+  }
+
+  const savedDomain = getSystemDomain();
+  if (savedDomain && savedDomain.trim()) {
+    let clean = savedDomain.trim();
+    if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+      clean = "https://" + clean;
+    }
+    return clean.replace(/\/+$/, "");
+  }
+
+  if (req) {
+    const proto = (req.headers && (req.headers['x-forwarded-proto'] as string)) || req.protocol || 'https';
+    const host = (req.headers && (req.headers['x-forwarded-host'] as string)) || (req.get ? req.get('host') : '') || (req.headers && (req.headers as any).host) || '';
+    if (host) {
+      return `${proto}://${host}`.replace(/\/+$/, "");
+    }
+  }
+
+  return process.env.DEV_SERVER_URL || "http://localhost:3000";
+}
+
 // Custom Domain Management
 app.get("/api/settings/custom-domain", (req, res) => {
   res.json({ success: true, customDomain: getSystemDomain() });
@@ -1857,7 +1882,7 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
     return res.status(400).json({ error: "请提供商品图片 URL 或图片 Base64 编码" });
   }
 
-  const hostOrigin = req.protocol + "://" + req.get("host");
+  const hostOrigin = getResolvedHostOrigin(req);
   const sourceImage = ensureSlimImageInput(rawSourceImage, hostOrigin);
 
   const taskId = "task-pipe-" + Date.now();
