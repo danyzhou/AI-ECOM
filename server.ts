@@ -75,6 +75,7 @@ import {
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", true);
 const PORT = 3000;
 
 app.use(express.json({ limit: "20mb" }));
@@ -2011,6 +2012,7 @@ app.post("/api/workflow/run-pipeline", async (req, res) => {
       galleryImages: [processedImage],
       status: "pending_review",
       source: { type: "upload" },
+      _hostOrigin: hostOrigin,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

@@ -261,6 +261,11 @@ export async function uploadMedia(
   const authHeader = getAuthHeader(config.consumerKey, config.consumerSecret);
   const startTime = Date.now();
 
+  let safeFilename = filename.toLowerCase().replace(/[^a-z0-9_\.-]/g, "_");
+  if (!/\.(jpg|jpeg|png|webp)$/i.test(safeFilename)) {
+    safeFilename = `${safeFilename}.jpg`;
+  }
+
   try {
     let imageBuffer: Buffer;
     let contentType = "image/jpeg";
@@ -279,7 +284,7 @@ export async function uploadMedia(
       const arrayBuffer = await imgRes.arrayBuffer();
       imageBuffer = Buffer.from(arrayBuffer);
       const ct = imgRes.headers.get("content-type");
-      if (ct) contentType = ct;
+      if (ct && ct.includes("image/")) contentType = ct.split(";")[0].trim();
     } else if (imageUrl.startsWith("/uploads/")) {
       const publicPath = path.join(process.cwd(), "public", imageUrl);
       const distPath = path.join(process.cwd(), "dist", imageUrl);
@@ -300,14 +305,14 @@ export async function uploadMedia(
       return { image_url: imageUrl };
     }
 
-    console.log(`[WP Media Uploading] POST ${endpoint} (Filename: ${filename})`);
+    console.log(`[WP Media Uploading] POST ${endpoint} (Filename: ${safeFilename}, Content-Type: ${contentType})`);
 
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: authHeader,
         "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="${safeFilename}"`,
         "User-Agent": "AI-Ecom-Studio-Publisher/1.0",
       },
       body: imageBuffer,
@@ -342,7 +347,7 @@ export async function uploadMedia(
         image_url: sourceUrl,
       };
     } else {
-      console.warn(`[WP Media Upload Warning] WP Core 媒体 API 返回 HTTP ${res.status} (ck_/cs_ 密钥无 WP 核心权限)，自动降级使用图片数据直接发送给 WooCommerce REST API`);
+      console.warn(`[WP Media Upload Warning] WP Core 媒体 API 返回 HTTP ${res.status} (${resText.substring(0, 150)})，降级为 URL 直连模式`);
       return { image_url: imageUrl };
     }
   } catch (err: any) {
@@ -568,6 +573,57 @@ export async function createProduct(
         if (parsed.message) errMsg = parsed.message;
       } catch {
         if (resText) errMsg = resText.substring(0, 200);
+      }
+
+      // Fallback Policy: If WooCommerce REST API rejected image upload/sideload (400 / file permission / file type error)
+      const isImageError = res.status === 400 && payload.images && payload.images.length > 0 &&
+        (errMsg.includes("Imagen no válida") ||
+         errMsg.includes("permisos") ||
+         errMsg.includes("subir") ||
+         errMsg.includes("archivo") ||
+         errMsg.includes("file") ||
+         errMsg.includes("upload") ||
+         errMsg.includes("image") ||
+         errMsg.includes("type"));
+
+      if (isImageError) {
+        console.warn(`[WooCommerce Create Product Image Fallback] 检测到 WP 媒体文件类型/权限错误 (${errMsg})，触发自动容错降级，剔除图片数据重试发布...`);
+        const retryPayload = { ...payload, images: [] };
+        const retryRes = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: authHeader,
+            "Content-Type": "application/json",
+            "User-Agent": "AI-Ecom-Studio-Publisher/1.0",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(retryPayload),
+        });
+
+        const retryText = await retryRes.text();
+        if (retryRes.ok) {
+          let retryData: any = {};
+          try { retryData = JSON.parse(retryText); } catch {}
+          const createdProduct = {
+            id: retryData.id,
+            permalink: retryData.permalink || `${siteUrl}/product/${retryData.slug || payload.slug}`,
+            status: retryData.status || publishMode,
+            sku: retryData.sku || generatedSku
+          };
+          console.log(`[WooCommerce Create Product Fallback Success] 降级重试成功创建商品 (ID: #${createdProduct.id}, URL: ${createdProduct.permalink})`);
+          addSystemLog({
+            type: "woocommerce",
+            action: "create_product_fallback",
+            target: siteUrl,
+            status: "success",
+            httpCode: retryRes.status,
+            latencyMs: Date.now() - startTime,
+            responsePayload: createdProduct
+          });
+          return createdProduct;
+        } else {
+          console.error(`[WooCommerce Create Product Fallback Failed] 二次重试依然失败: ${retryText.substring(0, 200)}`);
+        }
       }
 
       const fullErrorMsg = `WooCommerce REST API 商品创建失败 (${res.status}): ${errMsg}`;
